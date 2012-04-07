@@ -6,8 +6,8 @@ server. I use to do "make dev" after compilation and to call
 
 > riak_mongo:start(temporary, ["127.0.0.1", 32323]).
 
-The mongo shell is called like "mongo --verbose -port 32323". And I get the prompt now,
-though ignoring one TCP packet yet. No SSL and no IPv6 yet, just the first basics. Also
+The mongo shell is called like "mongo --verbose -port 32323". And I get the prompt now.
+No SSL and no IPv6 yet, just the first basics. Also
 the beauty of the code can be discussed, but shouldn't be yet.
 
 The very huge task will of course be to understand and translate to Riak all the

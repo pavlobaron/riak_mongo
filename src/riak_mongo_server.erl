@@ -29,10 +29,6 @@
 
 -export([add_listener/1]).
 
--include("mongo.hrl").
-
--define(ERROR, "error\n").
-
 -behavior(gen_nb_server).
 
 start_link() ->
@@ -95,31 +91,6 @@ worker(Owner, Sock) ->
     gen_tcp:controlling_process(Sock, Owner).
 
 worker(Owner, Sock, Data) ->
-    gen_tcp:send(Sock, process_data(Sock, Data)),
+    gen_tcp:send(Sock, wire_protocol:process_data(Sock, Data)),
     inet:setopts(Sock, [{active, once}]),
     gen_tcp:controlling_process(Sock, Owner).
-
-process_data(Sock, ?MSG(?OP_QUERY)) ->
-    process_query(Sock, ID, Rest);
-
-process_data(_, _) ->
-    ?ERROR.
-
-process_query(Sock, ID, ?QUERY(?CMD)) ->
-    process_cmd(Sock, ID, bson_binary:get_document(Rest));
-
-process_query(_, _, _) ->
-    ?ERROR.
-
-process_cmd(Sock, ID, {{whatsmyuri, 1}, _}) ->
-    {ok, {{A, B, C, D}, P}} = inet:peername(Sock), %IPv6???
-    You = io_lib:format("~p.~p.~p.~p:~p", [A, B, C, D, P]),
-    reply(ID, {you, list_to_binary(You), ok, 1});
-
-process_cmd(_, _, _) ->
-    ?ERROR.
-
-reply(ID, T) ->
-    Res = bson_binary:put_document(T),
-    L = byte_size(Res) + 36,
-    ?REPLY(L, ID, 0, ?OP_REPLY, 8, 0, 0, 1, Res).
