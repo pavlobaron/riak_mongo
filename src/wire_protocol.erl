@@ -37,8 +37,6 @@
 					   OP:32/little, F:32/little, C:64/little,
 					   S:32/little, N:32/little, D/binary>>).
 
-%{{errmsg,<<"not running with --replSet">>,ok,0.0},<<>>}
-
 process_data(Sock, ?MSG(?OP_QUERY)) ->
     process_query(Sock, ID, Rest);
 

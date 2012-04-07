@@ -22,11 +22,10 @@
 
 -module(riak_mongo).
 -behaviour(application).
--export([start/2, stop/1]).
+-export([start/3, stop/1]).
 
-start(_Type, Args) ->
-    riak_mongo_sup:start_link(),
-    riak_mongo_sup:add_listener(Args).
+start(_Type, IpAddr, Port) ->
+    riak_mongo_sup:start_link(IpAddr, Port).
 
 stop(_State) ->
     ok.

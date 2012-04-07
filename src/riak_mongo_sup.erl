@@ -23,17 +23,13 @@
 -module(riak_mongo_sup).
 -behaviour(supervisor).
 
--export([start_link/0, init/1]).
--export([add_listener/1]).
+-export([start_link/2, init/1]).
 
-start_link() ->
-    supervisor:start_link({local, ?MODULE}, ?MODULE, []).
+start_link(IpAddr, Port) ->
+    supervisor:start_link({local, ?MODULE}, ?MODULE, [IpAddr, Port]).
 
-init(_Args) ->
+init(Args) ->
     ServerSpec = {server,
-                  {riak_mongo_server, start_link, []},
+                  {riak_mongo_server, start_link, Args},
                   transient, 2000, worker, [riak_mongo_server]},
     {ok, {{one_for_one, 2, 10}, [ServerSpec]}}.
-
-add_listener(Args) ->
-    riak_mongo_server:add_listener(Args).

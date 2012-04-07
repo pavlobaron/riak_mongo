@@ -4,7 +4,7 @@ Currently, I'm working on the very basic implementation of the Wire protocol, wo
 through different packet types. Right now, you can get the mongo shell connecting to the
 server. I use to do "make dev" after compilation and to call
 
-> riak_mongo:start(temporary, ["127.0.0.1", 32323]).
+> riak_mongo:start(temporary, "127.0.0.1", 32323).
 
 The mongo shell is called like "mongo --verbose -port 32323". And I get the prompt now.
 No SSL and no IPv6 yet, just the first basics. Also

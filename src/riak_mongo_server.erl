@@ -22,48 +22,15 @@
 
 -module(riak_mongo_server).
 
--export([start_link/0]).
-
--export([init/2, handle_call/3, handle_cast/2, handle_info/2]).
--export([terminate/2, sock_opts/0, new_connection/4]).
-
--export([add_listener/1]).
+-export([start_link/2, handle_info/2, new_connection/2, init/1, sock_opts/0]).
 
 -behavior(gen_nb_server).
 
-start_link() ->
-    gen_nb_server:start_link(?MODULE, []).
+start_link(IpAddr, Port) ->
+    gen_nb_server:start_link(?MODULE, IpAddr, Port, []).
 
-add_listener([IpAddr, Port]) ->
-    gen_server:call(whereis(?MODULE), {add_listener, IpAddr, Port}).
-
-remove_listener(Pid, IpAddr, Port) ->
-    gen_server:call(Pid, {remove_listener, IpAddr, Port}).
-
-init([], State) ->
-    register(?MODULE, self()),
-    {ok, gen_nb_server:store_cb_state([], State)}.
-
-handle_call({add_listener, IpAddr, Port}, _From, State) ->
-    [] = gen_nb_server:get_cb_state(State),
-    case gen_nb_server:add_listen_socket({IpAddr, Port}, State) of
-        {ok, State1} ->
-            {reply, ok, State1};
-        Error ->
-            {reply, Error, State}
-    end;
-handle_call({remove_listener, IpAddr, Port}, _From, State) ->
-    case gen_nb_server:remove_listen_socket({IpAddr, Port}, State) of
-        {ok, State1} ->
-            {reply, ok, State1};
-        Error ->
-            {reply, Error, State}
-    end;
-handle_call(_Msg, _From, State) ->
-    {reply, ignored, State}.
-
-handle_cast(_Msg, State) ->
-    {noreply, State}.
+init(_Args) ->
+    {ok, ok}.
 
 handle_info({tcp, Sock, Data}, State) ->
     Me = self(),
@@ -74,17 +41,14 @@ handle_info({tcp, Sock, Data}, State) ->
 handle_info(_Msg, State) ->
     {noreply, State}.
 
-terminate(_Reason, _State) ->
-    ok.
-
-sock_opts() ->
-    [binary, {active, once}, {packet, 0}].
-
-new_connection(_IpAddr, _Port, Sock, State) ->
+new_connection(Sock, State) ->
     Me = self(),
     P = spawn(fun() -> worker(Me, Sock) end),
     gen_tcp:controlling_process(Sock, P),
     {ok, State}.
+
+sock_opts() ->
+    [binary, {active, once}, {packet, 0}].
 
 worker(Owner, Sock) ->
     inet:setopts(Sock, [{active, once}]),
