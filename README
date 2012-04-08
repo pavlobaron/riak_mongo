@@ -7,6 +7,7 @@ Run it in a Riak node instance using:
 I use the low level riak_kv Erlang API to talk to the local store. Right now, you can connect to it from the Mongo shell on the same machine using:
 
 $ mongo --verbose -port 32323 collection
+> db.things.findOne()
 
 Buckets in the Riak store must be named like "collection.things" - the prefix is thus the name of the database you connect from the Mongo shell to.
 
