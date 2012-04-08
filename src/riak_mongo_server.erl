@@ -55,6 +55,6 @@ worker(Owner, Sock) ->
     gen_tcp:controlling_process(Sock, Owner).
 
 worker(Owner, Sock, Data) ->
-    gen_tcp:send(Sock, wire_protocol:process_data(Sock, Data)),
+    wire_protocol:process_data(Sock, Data),
     inet:setopts(Sock, [{active, once}]),
     gen_tcp:controlling_process(Sock, Owner).

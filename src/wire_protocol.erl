@@ -24,14 +24,14 @@
 
 -export([process_data/2]).
 
--define(MSG(OP), <<_MessageLength:32, ID:32/little, _ResponseTo:32, OP:32/little, Rest/binary>>).
+-define(MSG(OP), <<_MessageLength:32, ID:32/little,
+		   _ResponseTo:32, OP:32/little, Rest/binary>>).
 
 -define(OP_REPLY, 1).
 -define(OP_QUERY, 2004).
 
--define(CMD, "admin.$cmd").
-
--define(QUERY(C), <<_Flags:32, C, 0:8, _N1:32, _N2:32, Rest/binary>>).
+-define(CMD, <<_Flags:32, "admin.$cmd", 0:8, _N1:32, _N2:32, Rest/binary>>).
+-define(QUERY, <<_Flags:32, Rest/binary>>).
 
 -define(REPLY(L, I, T, OP, F, C, S, N, D), <<L:32/little, I:32/little, T:32/little,
 					   OP:32/little, F:32/little, C:64/little,
@@ -40,31 +40,39 @@
 process_data(Sock, ?MSG(?OP_QUERY)) ->
     process_query(Sock, ID, Rest);
 
-process_data(_, _) ->
-    reply_error(0, "unsupported message").
+process_data(Sock, _) ->
+    reply_error(Sock, 0, "unsupported message").
 
-process_query(Sock, ID, ?QUERY(?CMD)) ->
+process_query(Sock, ID, ?CMD) ->
     process_cmd(Sock, ID, bson_binary:get_document(Rest));
 
-process_query(_, _, _) ->
-    reply_error(0, "unsupported query").
+process_query(Sock, ID, ?QUERY) ->
+    [Collection, B|_] = binary:split(Rest, <<0:8>>),
+    <<_N1:32, NumberToReturn:32/little-signed, Query/binary>> = B,
+    Value = riak_mongo_logic:find(Collection, NumberToReturn, bitstring_to_list(Query)),
+    case Value of
+	unsupported -> reply_error(Sock, ID, "unsuppoted query");
+	Value -> reply(Sock, ID, Value)
+    end;
+
+process_query(Sock, _, _) ->
+    reply_error(Sock, 0, "unsupported query").
 
 process_cmd(Sock, ID, {{whatsmyuri, 1}, _}) ->
-    {ok, {{A, B, C, D}, P}} = inet:peername(Sock), %IPv6???
-    You = io_lib:format("~p.~p.~p.~p:~p", [A, B, C, D, P]),
-    reply(ID, {you, list_to_binary(You), ok, 1});
+    You = riak_mongo_logic:you(inet:peername(Sock)),
+    reply(Sock, ID, {you, list_to_binary(You), ok, 1});
 
-process_cmd(_, ID, {{replSetGetStatus, 1, forShell, 1}, _}) ->
-    reply_error(ID, "not running with --replSet");
+process_cmd(Sock, ID, {{replSetGetStatus, 1, forShell, 1}, _}) ->
+    reply_error(Sock, ID, "not running with --replSet");
 
-process_cmd(_, _, _) ->
-    reply_error(0, "unsupported command").
+process_cmd(Sock, _, _) ->
+    reply_error(Sock, 0, "unsupported command").
 
-reply(ID, T) ->
+reply(Sock, ID, T) ->
     Res = bson_binary:put_document(T),
     L = byte_size(Res) + 36,
-    ?REPLY(L, ID, ID, ?OP_REPLY, 8, 0, 0, 1, Res).
+    gen_tcp:send(Sock, ?REPLY(L, ID, ID, ?OP_REPLY, 8, 0, 0, 1, Res)).
 
-reply_error(ID, S) ->
+reply_error(Sock, ID, S) ->
     T = {errmsg, list_to_binary(S), ok, 0},
-    reply(ID, T).
+    reply(Sock, ID, T).

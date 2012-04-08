@@ -1,14 +1,16 @@
-riak_mongo makes Riak look like Mongo. In the first step, it will allow Mongo drivers to seamlessly connect to it using Mongo Wire Protocol and to map to the underlying Riak data store. In the next step it also might be interesting to have a Mongo based Riak backend.
+riak_mongo makes Riak look like Mongo to clients. In the first step, it will allow Mongo drivers to seamlessly connect to it using Mongo Wire Protocol and to map to the underlying Riak data store. In the next step it also might be interesting to have a Mongo based Riak backend.
 
-Currently, I'm working on the very basic implementation of the Wire protocol, working my way
-through different packet types. Right now, you can get the mongo shell connecting to the
-server. I use to do "make dev" after compilation and to call
+Run it in a Riak node instance using:
 
 > riak_mongo:start(temporary, "127.0.0.1", 32323).
 
-The mongo shell is called like "mongo --verbose -port 32323". And I get the prompt now.
-No SSL and no IPv6 yet, just the first basics. Also
-the beauty of the code can be discussed, but shouldn't be yet.
+I use the low level riak_kv Erlang API to talk to the local store. Right now, you can connect to it from the Mongo shell on the same machine using:
+
+$ mongo --verbose -port 32323 collection
+
+Buckets in the Riak store must be named like "collection.things" - the prefix is thus the name of the database you connect from the Mongo shell to.
+
+No auth, SSL and no IPv6 are considered yet - the implementiation is growing. Also the beauty of the code can be discussed, but shouldn't be yet.
 
 The very huge task will of course be to understand and translate to Riak all the
 mongo commands. But hey, the first step is done.
