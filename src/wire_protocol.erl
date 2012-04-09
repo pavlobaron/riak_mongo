@@ -28,9 +28,11 @@
 		   _ResponseTo:32, OP:32/little, Rest/binary>>).
 
 -define(OP_REPLY, 1).
+-define(OP_INSERT, 2002).
 -define(OP_QUERY, 2004).
 
 -define(CMD, <<_Flags:32, "admin.$cmd", 0:8, _N1:32, _N2:32, Rest/binary>>).
+-define(INSERT, <<_Flags:32, Rest/binary>>).
 -define(QUERY, <<_Flags:32, Rest/binary>>).
 
 -define(REPLY(L, I, T, OP, F, C, S, N, D), <<L:32/little, I:32/little, T:32/little,
@@ -40,8 +42,18 @@
 process_data(Sock, ?MSG(?OP_QUERY)) ->
     process_query(Sock, ID, Rest);
 
+process_data(Sock, ?MSG(?OP_INSERT)) ->
+    process_insert(Sock, ID, Rest);
+
 process_data(Sock, _) ->
     reply_error(Sock, 0, "unsupported message").
+
+process_insert(Sock, ID, ?INSERT) ->
+    [Collection, Documents|_] = binary:split(Rest, <<0:8>>),
+    riak_mongo_logic:insert(Collection, bson_binary:get_document(Documents));
+
+process_insert(Sock, _, _) ->
+    reply_error(Sock, 0, "unsupported insert").
 
 process_query(Sock, ID, ?CMD) ->
     process_cmd(Sock, ID, bson_binary:get_document(Rest));
@@ -49,7 +61,7 @@ process_query(Sock, ID, ?CMD) ->
 process_query(Sock, ID, ?QUERY) ->
     [Collection, B|_] = binary:split(Rest, <<0:8>>),
     <<_N1:32, NumberToReturn:32/little-signed, Query/binary>> = B,
-    Value = riak_mongo_logic:find(Collection, NumberToReturn, bitstring_to_list(Query)),
+    Value = riak_mongo_logic:find(Collection, NumberToReturn, Query),
     case Value of
 	unsupported -> reply_error(Sock, ID, "unsuppoted query");
 	Value -> reply(Sock, ID, Value)

@@ -22,13 +22,19 @@
 
 -module(riak_mongo_logic).
 
--export([you/1, find/3]).
+-export([you/1, find/3, insert/2]).
 
 you(Peer) ->
     {ok, {{A, B, C, D}, P}} = Peer, %IPv6???
     io_lib:format("~p.~p.~p.~p:~p", [A, B, C, D, P]).
 
-find(Collection, NumberToReturn, Query) when NumberToReturn == -1 ->
+insert(Collection, Documents) ->
+    {ok, C} = riak:local_client(),
+    ID = riak_core_util:unique_id_62(),
+    O = riak_object:new(Collection, list_to_binary(ID), Documents),
+    C:put(O).
+
+find(Collection, NumberToReturn, _) when NumberToReturn == -1 ->
     {ok, C} = riak:local_client(),
     {ok, L} = C:list_keys(Collection),
     case L of
