@@ -21,7 +21,7 @@
 %% @copyright 2012 Trifork
 -module(riak_mongo_protocol).
 
--export([decode_wire/1, decode_packet/1]).
+-export([decode_wire/1, decode_packet/1, encode_packet/1]).
 -export([split_dbcoll/1]).
 
 -include_lib ("bson/include/bson_binary.hrl").
@@ -44,7 +44,8 @@
 decode_wire(Binary) ->
     decode_wire(Binary, []).
 
-decode_wire(<<?get_int32(Size), Rest/binary>>, Acc) when (byte_size(Rest)+4) >= Size ->
+decode_wire(<<?get_int32(WireSize), Rest/binary>>, Acc) when byte_size(Rest) >= WireSize-4 ->
+    Size = WireSize-4,
     <<Packet:Size/binary, NextRest/binary>> = Rest,
     {ok, Message} = decode_packet(Packet),
     decode_wire( NextRest, [Message|Acc] );
@@ -52,12 +53,17 @@ decode_wire(<<?get_int32(Size), Rest/binary>>, Acc) when (byte_size(Rest)+4) >= 
 decode_wire(Rest, Acc) ->
     {lists:reverse(Acc), Rest}.
 
+
 -define(HDR(ResponseTo, Opcode), RequestId:32/little, ResponseTo:32/little, Opcode:32/little).
 
 -spec decode_packet( binary() ) -> {ok, mongo_message() }.
 
 bool(1) -> true;
 bool(0) -> false.
+
+bit(true) -> 1;
+bit(false) -> 0.
+
 
 decode_packet( << ?HDR(_, ?InsertOpcode), ?get_bits32(0,0,0,0,0,0,0,ContinueOnError), Rest/binary >> ) ->
     {DBColl, Rest1} = bson_binary:get_cstring(Rest),
@@ -102,7 +108,7 @@ decode_packet(<< ?HDR(_, ?QueryOpcode),
                  ?get_bits32(Partial,Exhaust,AwaitData,NoCursorTimeout,OplogReplay,SlaveOK,Tailable,0),
                  Rest/binary >>) ->
     {DBColl, Rest1} = bson_binary:get_cstring(Rest),
-    << ?get_int32(NumberToSkip), ?get_int32(NumberToReturn), Rest2 >> = Rest1,
+    << ?get_int32(NumberToSkip), ?get_int32(NumberToReturn), Rest2/binary >> = Rest1,
     [Query | ReturnFieldSelectors ] = get_all_docs(Rest2),
 
     {ok, #mongo_query{ request_id=RequestId,
@@ -128,7 +134,8 @@ decode_packet(<< ?HDR(_, ?GetmoreOpcode), 0:32, Rest/binary >>) ->
                          batchsize=NumberToReturn,
                          cursorid=CursorID }};
 
-decode_packet(<< ?HDR(_,OP), _/binary >>) ->
+decode_packet(<< ?HDR(_,OP), _/binary >> = All) ->
+    error_logger:info_msg("bad ~w~n", [All]),
     exit({error, {bad_message, RequestId, OP}}).
 
 
@@ -136,6 +143,23 @@ split_dbcoll(Bin) ->
 	{Pos, _Len} = binary:match (Bin, <<$.>>),
 	<<DB :Pos /binary, $.:8, Coll /binary>> = Bin,
 	{DB, Coll}.
+
+encode_packet(#mongo_reply{
+                 request_id=RequestId,
+                 reply_to=ReplyTo,
+                 awaitcapable=AwaitCapable,
+                 queryerror=QueryFailure,
+                 cursorid=CursorID,
+                 cursornotfound=CursorNotFound,
+                 startingfrom=StartingFrom,
+                 documents=Documents }) ->
+    ShardConfigStale = false,
+    {ok, << ?put_int32(RequestId), ?put_int32(ReplyTo), ?put_int32(?ReplyOpcode),
+            ?put_bits32(0,0,0,0,bit(AwaitCapable),bit(ShardConfigStale),bit(QueryFailure),bit(CursorNotFound)),
+            ?put_int64(CursorID),
+            ?put_int32(StartingFrom),
+            ?put_int32(length(Documents)),
+            << <<(bson_binary:put_document (Doc)) /binary>> || Doc <- Documents>> /binary >>}.
 
 
 %%
