@@ -16,7 +16,7 @@
 %% limitations under the License.
 %%
 
-%% @author Pavlo Baron <pbat pbit dot org> (borrowed from Kevin Smith)
+%% @author Pavlo Baron <pb at pbit dot org> (borrowed from Kevin Smith)
 %% @doc This is the app config of riak_mongo
 %% @copyright 2012 Pavlo Baron
 

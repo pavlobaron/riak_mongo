@@ -16,7 +16,7 @@
 %% limitations under the License.
 %%
 
-%% @author Pavlo Baron <pbat pbit dot org>
+%% @author Pavlo Baron <pb at pbit dot org>
 %% @doc This is the implementiation of the Mongo Wire protocol
 %% @copyright 2012 Pavlo Baron
 
