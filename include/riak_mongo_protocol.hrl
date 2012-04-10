@@ -47,13 +47,14 @@
            cursorid :: integer() }).
 
 -record (mongo_reply, {
+           request_id :: integer(),
            reply_to :: integer(),
-           cursornotfound :: boolean(),
-           queryerror :: boolean(),
-           awaitcapable :: boolean(),
-           cursorid :: integer(),
-           startingfrom :: integer(),
-           documents :: [bson:document()] }).
+           cursornotfound = false :: boolean(),
+           queryerror = false :: boolean(),
+           awaitcapable = false :: boolean(),
+           cursorid = 0 :: integer(),
+           startingfrom = 0 :: integer(),
+           documents = [] :: [bson:document()] }).
 
 -type mongo_message() :: #mongo_insert{} | #mongo_update{} | #mongo_delete{}
                          | #mongo_killcursor{} | #mongo_query{} | #mongo_getmore{}.
