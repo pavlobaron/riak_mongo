@@ -28,10 +28,16 @@ you(Peer) ->
     {ok, {{A, B, C, D}, P}} = Peer, %IPv6???
     io_lib:format("~p.~p.~p.~p:~p", [A, B, C, D, P]).
 
-insert(Collection, Documents) ->
+insert(Collection, Document) ->
     {ok, C} = riak:local_client(),
-    ID = riak_core_util:unique_id_62(),
-    O = riak_object:new(Collection, list_to_binary(ID), Documents),
+    case bson:lookup ('_id', Document) of
+        {ID} ->
+            Doc = Document;
+        {} ->
+            ID = list_to_binary(riak_core_util:unique_id_62()),
+            Doc = bson:append({'_id', ID}, Document)
+    end,
+    O = riak_object:new(Collection, ID, Doc),
     C:put(O).
 
 find(Collection, NumberToReturn, _) when NumberToReturn == -1 ->

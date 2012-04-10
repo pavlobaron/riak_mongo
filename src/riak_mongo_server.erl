@@ -26,6 +26,8 @@
 
 -export([start_link/2, handle_info/2, new_connection/2, init/1, sock_opts/0]).
 
+-export([send_packet/2]).
+
 -behavior(gen_nb_server).
 
 start_link(IpAddr, Port) ->
@@ -73,7 +75,9 @@ handle_data(Sock, Rest) when is_binary(Rest) ->
     inet:setopts(Sock, [{active, once}]),
     {ok, Rest}.
 
-
+send_packet(Sock, Data) ->
+    Size = byte_size(Data),
+    gen_tcp:send(Sock, <<?put_int32(Size+4), Data>>).
 
 
 

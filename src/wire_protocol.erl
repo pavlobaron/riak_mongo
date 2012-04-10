@@ -38,7 +38,7 @@
 -define(INSERT, <<_Flags:32, Rest/binary>>).
 -define(QUERY, <<_Flags:32, Rest/binary>>).
 
--define(REPLY(L, I, T, OP, F, C, S, N, D), <<L:32/little, I:32/little, T:32/little,
+-define(REPLY(I, T, OP, F, C, S, N, D), <<I:32/little, T:32/little,
 					   OP:32/little, F:32/little, C:64/little,
 					   S:32/little, N:32/little, D/binary>>).
 
@@ -52,11 +52,19 @@ process_packet(Sock, _) ->
     reply_error(Sock, 0, "unsupported message").
 
 process_insert(_Sock, _ID, ?INSERT) ->
-    [Collection, Documents|_] = binary:split(Rest, <<0:8>>),
-    riak_mongo_logic:insert(Collection, bson_binary:get_document(Documents));
+    {Collection, Documents} = get_cstring(Rest),
+    process_insert_loop(Collection, Documents);
 
 process_insert(Sock, _, _) ->
     reply_error(Sock, 0, "unsupported insert").
+
+process_insert_loop(Collection, <<>>) ->
+    ok;
+process_insert_loop(Collection, Documents) ->
+    {Document, Rest} = bson_binary:get_document(Documents),
+    riak_mongo_logic:insert(Collection, Document),
+    process_insert_loop(Collection, Rest).
+
 
 process_query(Sock, ID, ?CMD) ->
     process_cmd(Sock, ID, bson_binary:get_document(Rest));
@@ -85,8 +93,7 @@ process_cmd(Sock, _, _) ->
 
 reply(Sock, ID, T) ->
     Res = bson_binary:put_document(T),
-    L = byte_size(Res) + 36,
-    gen_tcp:send(Sock, ?REPLY(L, ID, ID, ?OP_REPLY, 8, 0, 0, 1, Res)).
+    riak_mongo_server:send_packet(Sock, ?REPLY(ID, ID, ?OP_REPLY, 8, 0, 0, 1, Res)).
 
 reply_error(Sock, ID, S) ->
     T = {errmsg, list_to_binary(S), ok, 0},
