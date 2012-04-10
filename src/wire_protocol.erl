@@ -52,13 +52,13 @@ process_packet(Sock, _) ->
     reply_error(Sock, 0, "unsupported message").
 
 process_insert(_Sock, _ID, ?INSERT) ->
-    {Collection, Documents} = get_cstring(Rest),
+    {Collection, Documents} = bson_binary:get_cstring(Rest),
     process_insert_loop(Collection, Documents);
 
 process_insert(Sock, _, _) ->
     reply_error(Sock, 0, "unsupported insert").
 
-process_insert_loop(Collection, <<>>) ->
+process_insert_loop(_Collection, <<>>) ->
     ok;
 process_insert_loop(Collection, Documents) ->
     {Document, Rest} = bson_binary:get_document(Documents),
