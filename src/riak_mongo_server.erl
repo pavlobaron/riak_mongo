@@ -22,6 +22,8 @@
 
 -module(riak_mongo_server).
 
+-include_lib ("bson/include/bson_binary.hrl").
+
 -export([start_link/2, handle_info/2, new_connection/2, init/1, sock_opts/0]).
 
 -behavior(gen_nb_server).
@@ -32,29 +34,46 @@ start_link(IpAddr, Port) ->
 init(_Args) ->
     {ok, ok}.
 
-handle_info({tcp, Sock, Data}, State) ->
-    Me = self(),
-    P = spawn(fun() -> worker(Me, Sock, Data) end),
-    gen_tcp:controlling_process(Sock, P),
-    {noreply, State};
-
 handle_info(_Msg, State) ->
     {noreply, State}.
 
 new_connection(Sock, State) ->
     Me = self(),
-    P = spawn(fun() -> worker(Me, Sock) end),
+    P = spawn(fun() -> worker(Me) end),
     gen_tcp:controlling_process(Sock, P),
+    P ! {set_socket, Sock},
     {ok, State}.
 
 sock_opts() ->
     [binary, {active, once}, {packet, 0}].
 
-worker(Owner, Sock) ->
-    inet:setopts(Sock, [{active, once}]),
-    gen_tcp:controlling_process(Sock, Owner).
+%% this should really be a process under supervision
 
-worker(Owner, Sock, Data) ->
-    wire_protocol:process_data(Sock, Data),
+worker(Owner) ->
+    receive {set_socket, Sock} -> ok end,
     inet:setopts(Sock, [{active, once}]),
-    gen_tcp:controlling_process(Sock, Owner).
+    worker_loop(Owner, Sock, <<>>).
+
+worker_loop(Owner, Sock, UnprocessedData) ->
+    receive
+        {tcp, Sock, Data} ->
+            {ok, Rest} = handle_data(Sock, <<UnprocessedData/binary, Data/binary>>),
+            worker_loop(Owner, Sock, Rest)
+
+        %% timeout?
+    end.
+
+handle_data(Sock, << ?get_int32(MsgLen), _/binary>>=RawData) when byte_size(RawData) >= MsgLen ->
+    PacketLen = MsgLen-4,
+    <<?get_int32(_), Packet:PacketLen/binary, Rest/binary>> = RawData,
+    wire_protocol:process_packet(Sock, Packet),
+    handle_data(Sock, Rest);
+
+handle_data(Sock, Rest) when is_binary(Rest) ->
+    inet:setopts(Sock, [{active, once}]),
+    {ok, Rest}.
+
+
+
+
+

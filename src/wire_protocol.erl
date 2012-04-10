@@ -22,10 +22,13 @@
 
 -module(wire_protocol).
 
--export([process_data/2]).
+-export([process_packet/2]).
 
--define(MSG(OP), <<_MessageLength:32, ID:32/little,
-		   _ResponseTo:32, OP:32/little, Rest/binary>>).
+-include_lib ("bson/include/bson_binary.hrl").
+
+-define(MSG(OP), <<?get_int32(ID),
+		   ?get_int32(_ResponseTo),
+                   ?get_int32(OP), Rest/binary>>).
 
 -define(OP_REPLY, 1).
 -define(OP_INSERT, 2002).
@@ -39,16 +42,16 @@
 					   OP:32/little, F:32/little, C:64/little,
 					   S:32/little, N:32/little, D/binary>>).
 
-process_data(Sock, ?MSG(?OP_QUERY)) ->
+process_packet(Sock, ?MSG(?OP_QUERY)) ->
     process_query(Sock, ID, Rest);
 
-process_data(Sock, ?MSG(?OP_INSERT)) ->
+process_packet(Sock, ?MSG(?OP_INSERT)) ->
     process_insert(Sock, ID, Rest);
 
-process_data(Sock, _) ->
+process_packet(Sock, _) ->
     reply_error(Sock, 0, "unsupported message").
 
-process_insert(Sock, ID, ?INSERT) ->
+process_insert(_Sock, _ID, ?INSERT) ->
     [Collection, Documents|_] = binary:split(Rest, <<0:8>>),
     riak_mongo_logic:insert(Collection, bson_binary:get_document(Documents));
 
