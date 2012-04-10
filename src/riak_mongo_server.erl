@@ -23,12 +23,13 @@
 -module(riak_mongo_server).
 
 -include_lib ("bson/include/bson_binary.hrl").
+-include ("riak_mongo_protocol.hrl").
 
 -export([start_link/2, handle_info/2, new_connection/2, init/1, sock_opts/0]).
 
--export([send_packet/2]).
-
 -behavior(gen_nb_server).
+
+-record(state, {owner :: pid(), sock, request_id=0}).
 
 start_link(IpAddr, Port) ->
     gen_nb_server:start_link(?MODULE, IpAddr, Port, []).
@@ -54,30 +55,70 @@ sock_opts() ->
 worker(Owner) ->
     receive {set_socket, Sock} -> ok end,
     inet:setopts(Sock, [{active, once}]),
-    worker_loop(Owner, Sock, <<>>).
+    worker_loop(#state{ owner=Owner, sock=Sock }, <<>>).
 
-worker_loop(Owner, Sock, UnprocessedData) ->
+worker_loop(#state{sock=Sock}=State, UnprocessedData) ->
     receive
         {tcp, Sock, Data} ->
-            {ok, Rest} = handle_data(Sock, <<UnprocessedData/binary, Data/binary>>),
-            worker_loop(Owner, Sock, Rest)
+            {Messages, Rest} = riak_mongo_protocol:decode_wire(<<UnprocessedData/binary, Data/binary>>),
+            State2 = process_messages(Messages, State),
+            inet:setopts(Sock, [{active, once}]),
+            worker_loop(State2, Rest);
+
+
+        Msg ->
+            error_logger:info_msg("unknown message in worker loop: ~p~n", [Msg]),
+            exit(bad_msg)
 
         %% timeout?
     end.
 
-handle_data(Sock, << ?get_int32(MsgLen), _/binary>>=RawData) when byte_size(RawData) >= MsgLen ->
-    PacketLen = MsgLen-4,
-    <<?get_int32(_), Packet:PacketLen/binary, Rest/binary>> = RawData,
-    wire_protocol:process_packet(Sock, Packet),
-    handle_data(Sock, Rest);
 
-handle_data(Sock, Rest) when is_binary(Rest) ->
-    inet:setopts(Sock, [{active, once}]),
-    {ok, Rest}.
+%%
+%% loop over messages
+%%
+process_messages([], State) ->
+    State;
+process_messages([Message|Rest], State) ->
+    error_logger:info_msg("processing ~p~n", [Message]),
+    case process_message(Message, State) of
+        {noreply, OutState} ->
+            ok;
 
-send_packet(Sock, Data) ->
-    Size = byte_size(Data),
-    gen_tcp:send(Sock, <<?put_int32(Size+4), Data>>).
+        {reply, Reply, #state{ sock=Sock }=State2} ->
+            MessageID = element(2, Message),
+            ReplyMessage = Reply#mongo_reply{ request_id = State2#state.request_id,
+                                              reply_to = MessageID },
+            OutState = State2#state{ request_id = (State2#state.request_id+1) },
+
+            error_logger:info_msg("replying ~p~n", [ReplyMessage]),
+
+            {ok, Packet} = riak_mongo_protocol:encode_packet(ReplyMessage),
+            Size = byte_size(Packet),
+            gen_tcp:send(Sock, <<?put_int32(Size+4), Packet/binary>>)
+    end,
+
+    process_messages(Rest, OutState);
+process_messages(A1,A2) ->
+    error_logger:info_msg("BAD ~p,~p~n", [A1,A2]),
+    exit({badarg,A1,A2}).
+
+
+%%
+%% process one message
+%%
+process_message(#mongo_query{ dbcoll= <<"admin.$cmd">>, selector={whatsmyuri, 1}}, State) ->
+    Peer = inet:peername(State#state.sock),
+    PeerName = riak_mongo_logic:you(Peer),
+    {reply, #mongo_reply{ documents=[ {binary_to_atom(iolist_to_binary(PeerName), utf8), 1}  ] }, State};
+
+process_message(#mongo_query{}=Message, State) ->
+    error_logger:info_msg("unhandled query: ~p~n", [Message]),
+    {reply, #mongo_reply{ queryerror=true }, State};
+
+process_message(Message, State) ->
+    error_logger:info_msg("unhandled message: ~p~n", [Message]),
+    {noreply, State}.
 
 
 
