@@ -112,7 +112,8 @@ process_messages(A1,A2) ->
 process_message(#mongo_query{ dbcoll= <<"admin.$cmd">>, selector={whatsmyuri, 1}}, State) ->
     Peer = inet:peername(State#state.sock),
     PeerName = riak_mongo_logic:you(Peer),
-    {reply, #mongo_reply{ documents=[ {binary_to_atom(iolist_to_binary(PeerName), utf8), 1}  ] }, State};
+    Document = { you, iolist_to_binary(PeerName), ok, 1 },
+    {reply, #mongo_reply{ documents=[Document] }, State};
 
 process_message(#mongo_query{}=Message, State) ->
     error_logger:info_msg("unhandled query: ~p~n", [Message]),
