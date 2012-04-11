@@ -67,10 +67,10 @@ bit(false) -> 0.
 
 decode_packet( << ?HDR(_, ?InsertOpcode), ?get_bits32(0,0,0,0,0,0,0,ContinueOnError), Rest/binary >> ) ->
     {DBColl, Rest1} = bson_binary:get_cstring(Rest),
-    BsonDocs = get_all_docs(Rest1),
+    Docs = riak_mongo_decenc:decode_bson(Rest1),
     {ok, #mongo_insert{ dbcoll=DBColl,
                         request_id=RequestId,
-                        documents=BsonDocs,
+                        documents=Docs,
                         continueonerror = bool(ContinueOnError)
                       }};
 
@@ -109,8 +109,11 @@ decode_packet(<< ?HDR(_, ?QueryOpcode),
                  Rest/binary >>) ->
     {DBColl, Rest1} = bson_binary:get_cstring(Rest),
     << ?get_int32(NumberToSkip), ?get_int32(NumberToReturn), Rest2/binary >> = Rest1,
-    [Query | ReturnFieldSelectors ] = get_all_docs(Rest2),
-
+    [{_, Query} | TReturnFieldSelectors] = riak_mongo_decenc:decode_bson(Rest2),
+    ReturnFieldSelectors = case TReturnFieldSelectors of
+			       [] -> {struct, []};
+			       _ -> element(2, TReturnFieldSelectors)
+    end,
     {ok, #mongo_query{ request_id=RequestId,
                        dbcoll=DBColl,
                        tailablecursor=bool(Tailable),
@@ -165,14 +168,14 @@ encode_packet(#mongo_reply{
 %%
 %%
 %%
-get_all_docs(Binary) ->
-    get_all_docs(Binary, []).
+%get_all_docs(Binary) ->
+%    get_all_docs(Binary, []).
 
-get_all_docs(<<>>, Acc) ->
-    lists:reverse(Acc);
-get_all_docs(Data, Acc) ->
-    {Doc, Rest} = bson_binary:get_document(Data),
-    get_all_docs(Rest, [Doc|Acc]).
+%get_all_docs(<<>>, Acc) ->
+%    lists:reverse(Acc);
+%get_all_docs(Data, Acc) ->
+%    {Doc, Rest} = riak:get_document(Data),
+%    get_all_docs(Rest, [Doc|Acc]).
 
 
 get_int64_list(Num, Binary) ->

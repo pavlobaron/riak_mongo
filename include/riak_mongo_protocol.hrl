@@ -3,7 +3,7 @@
            request_id :: integer(),
            dbcoll :: binary(),
            continueonerror = false :: boolean(),
-           documents :: [bson:document()] }).
+           documents :: [tuple()] }).
 
 -record (mongo_update, {
            request_id :: integer(),
@@ -37,7 +37,7 @@
 
            skip = 0 :: integer(),
            batchsize = 0 :: integer(), %% negative closes cursor
-           selector :: bson:document(),
+           selector :: tuple(),
            projector = [] :: bson:document() }).
 
 -record (mongo_getmore, {

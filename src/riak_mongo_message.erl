@@ -27,16 +27,22 @@
 -include ("riak_mongo_protocol.hrl").
 -include_lib("riak_mongo_state.hrl").
 
-process_message(#mongo_query{ dbcoll= <<"admin.$cmd">>, selector={whatsmyuri, 1}}, State) ->
+process_message(#mongo_query{ dbcoll= <<"admin.$cmd">>, selector={struct,[{<<"whatsmyuri">>,1}]}}, State) ->
+
     {reply, #mongo_reply{ documents=[{binary_to_atom(iolist_to_binary(you(State)), utf8), 1}]}, State};
 
-process_message(#mongo_query{ dbcoll= <<"admin.$cmd">>, selector={replSetGetStatus, 1, forShell, 1}}, State) ->
+process_message(#mongo_query{ dbcoll= <<"admin.$cmd">>, selector={struct, [{<<"replSetGetStatus">>, 1},
+									    {<<"forShell">>, 1}]}}, State) ->
     {reply, #mongo_reply{ documents=[{binary_to_atom(iolist_to_binary("not running with --replSet"),
 						     utf8), 1}]}, State};
 
 process_message(#mongo_query{}=Message, State) ->
     error_logger:info_msg("unhandled query: ~p~n", [Message]),
     {reply, #mongo_reply{ queryerror=true }, State};
+
+process_message(#mongo_insert{dbcoll=DbCol, documents=Documents}, State) ->
+    process_insert(DbCol, Documents),
+    {noreply, State};
 
 process_message(Message, State) ->
     error_logger:info_msg("unhandled message: ~p~n", [Message]),
@@ -46,3 +52,9 @@ process_message(Message, State) ->
 you(#state{peer=Peer}) ->
     {ok, {{A, B, C, D}, P}} = Peer, %IPv6???
     io_lib:format("~p.~p.~p.~p:~p", [A, B, C, D, P]).
+
+process_insert(_, []) ->
+    ok;
+process_insert(DbCol, [Document|L]) ->
+    riak_mongo_store:insert(DbCol, Document),
+    process_insert(DbCol, L).

@@ -22,12 +22,13 @@
 
 -module(riak_mongo_store).
 
-%-export([insert/1, find/1]).
+-export([insert/2]).
 
-%insert(#mongo_insert{dbcol=Collection, documents=Doc}) ->
-%    {ok, C} = riak:local_client(),
-%    O = riak_object:new(Collection, ID, Doc),
-%    C:put(O).
+-spec insert(binary(), tuple()) -> term().
+insert(Bucket, {ID, Struct}) ->
+    {ok, C} = riak:local_client(),
+    O = riak_object:new(Bucket, ID, riak_mongo_decenc:encode_struct(Struct)),
+    C:put(O).
 
 %find(#mongo_query=Query) ->
     % query!!!
