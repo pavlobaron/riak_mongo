@@ -32,7 +32,7 @@
 
 -module(riak_mongo_bson2).
 
--export([get_document/1, get_raw_document/1]).
+-export([get_document/1, get_raw_document/1, value_type/1]).
 
 -include("riak_mongo_bson2.hrl").
 
@@ -207,3 +207,47 @@ bin_to_int(<<>>, N) ->
     N;
 bin_to_int(<<CH, Rest/binary>>, N) ->
     bin_to_int(Rest, N*10 + (CH - $0)).
+
+
+value_type(Value) when is_float(Value) ->
+    ?DOUBLE_TAG;
+value_type(Value) when is_binary(Value) ->
+    ?STRING_TAG;
+value_type({struct, Elems}) when is_list(Elems) ->
+    ?DOCUMENT_TAG;
+value_type(Value) when is_list(Value) ->
+    ?ARRAY_TAG;
+value_type({binary, Value}) when is_binary(Value) ->
+    ?BINARY_TAG;
+value_type({function, Value}) when is_binary(Value) ->
+    ?BINARY_TAG;
+value_type({uuid, Value}) when is_binary(Value) ->
+    ?BINARY_TAG;
+value_type({md5, Value}) when is_binary(Value) ->
+    ?BINARY_TAG;
+value_type(undefined) ->
+    ?UNDEFINED_TAG;
+value_type({objectid, _}) ->
+    ?OBJECTID_TAG;
+value_type(true) ->
+    ?BOOLEAN_TAG;
+value_type(false) ->
+    ?BOOLEAN_TAG;
+value_type({I1,I2,I3}) when is_integer(I1), is_integer(I2), is_integer(I3) ->
+    ?UTC_TIME_TAG;
+value_type(null) ->
+    ?NULL_TAG;
+value_type({regex, _,_}) ->
+    ?REGEX_TAG;
+value_type({javascript, _}) ->
+    ?JAVASCRIPT_TAG;
+value_type({symbol,_}) ->
+    ?SYMBOL_TAG;
+value_type(Int32) when Int32 >= -16#80000000, Int32 =< 16#7fffffff ->
+    ?INT32_TAG;
+value_type(Int64) when Int64 >= -16#8000000000000000, Int64 =< 16#7fffffffffffffff ->
+    ?INT64_TAG;
+value_type('$min_key') ->
+    ?MIN_KEY_TAG;
+value_type('$max_key') ->
+    ?MAX_KEY_TAG.
