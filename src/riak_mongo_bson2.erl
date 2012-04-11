@@ -123,7 +123,7 @@ get_element_value(?BINARY_TAG, Rest) ->
 get_element_value(?UNDEFINED_TAG, Rest) ->
     {undefined, Rest};
 
-get_element_value(?OBJECTID_TAG, <<ObjectID:12/binary, Rest>>) ->
+get_element_value(?OBJECTID_TAG, <<ObjectID:12/binary, Rest/binary>>) ->
     {{objectid, ObjectID}, Rest};
 
 
@@ -152,10 +152,10 @@ get_element_value(?SYMBOL_TAG, Rest0) ->
     {Value, Rest} = get_string(Rest0),
     {{symbol, Value}, Rest};
 
-get_element_value(?INT32_TAG, <<Value:32/little-signed, Rest>>) ->
+get_element_value(?INT32_TAG, <<Value:32/little-signed, Rest/binary>>) ->
     {Value, Rest};
 
-get_element_value(?INT64_TAG, <<Value:64/little-signed, Rest>>) ->
+get_element_value(?INT64_TAG, <<Value:64/little-signed, Rest/binary>>) ->
     {Value, Rest};
 
 get_element_value(?MIN_KEY_TAG, Rest) ->
