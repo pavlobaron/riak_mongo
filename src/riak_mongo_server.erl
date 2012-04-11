@@ -65,6 +65,8 @@ worker_loop(#state{sock=Sock}=State, UnprocessedData) ->
             inet:setopts(Sock, [{active, once}]),
             worker_loop(State2, Rest);
 
+        {tcp_closed, Sock} ->
+            ok;
 
         Msg ->
             error_logger:info_msg("unknown message in worker loop: ~p~n", [Msg]),
