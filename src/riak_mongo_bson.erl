@@ -17,15 +17,28 @@
 %%
 
 %% @author Pavlo Baron <pb at pbit dot org>
-%% @doc This is the main module of riak_mongo
+%% @doc This is the wrapper around the mongo-bson encoder/decoder
 %% @copyright 2012 Pavlo Baron
 
--module(riak_mongo).
--behaviour(application).
--export([start/3, stop/1]).
+-module(riak_mongo_bson).
 
-start(_Type, IpAddr, Port) ->
-    riak_mongo_sup:start_link(IpAddr, Port).
+-export([encode_bson/1, decode_bson/1]).
 
-stop(_State) ->
-    ok.
+-include_lib("bson/include/bson_binary.hrl").
+
+-spec decode_bson(binary()) -> {binary(), binary()}.
+decode_bson(<<?get_int32(N), RawBson/binary>>) ->
+    S = N - 5,
+    <<DB:S/binary, 0:8, _Rest/binary>> = RawBson,
+    RawStruct = do_fields(DB),
+    ID = [V || {K, V} <- RawStruct, K =:= <<"_id">>],
+    {list_to_binary(ID), {struct, RawStruct}}.
+
+do_fields(<<>>) -> [];
+do_fields(B) ->
+    {N, V, B1} = bson_binary:get_field(B),
+    [{N, V} | do_fields(B1)].
+
+-spec encode_bson(binary()) -> binary().
+encode_bson(Struct) ->
+    iolist_to_binary(mochijson2:encode(Struct)).
