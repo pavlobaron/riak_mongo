@@ -22,8 +22,7 @@
 
 -module(riak_mongo_bson).
 
-%-export([encode_bson/1, decode_bson/2]).
--export([decode_bson/1]).
+-export([encode_bson/1, decode_bson/1]).
 
 -include_lib("bson/include/bson_binary.hrl").
 
@@ -32,10 +31,14 @@ decode_bson(<<?get_int32(N), RawBson/binary>>) ->
     S = N - 5,
     <<DB:S/binary, 0:8, _Rest/binary>> = RawBson,
     RawStruct = do_fields(DB),
-    [ID] = [V || {K, V} <- RawStruct, K =:= <<"_id">>],
-    {term_to_binary(ID), {struct, RawStruct}}.
+    ID = [V || {K, V} <- RawStruct, K =:= <<"_id">>],
+    {list_to_binary(ID), {struct, RawStruct}}.
 
 do_fields(<<>>) -> [];
 do_fields(B) ->
     {N, V, B1} = bson_binary:get_field(B),
     [{N, V} | do_fields(B1)].
+
+-spec encode_bson(binary()) -> binary().
+encode_bson(Struct) ->
+    iolist_to_binary(mochijson2:encode(Struct)).
