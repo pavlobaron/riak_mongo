@@ -2,3 +2,5 @@ ebin/*
 *.beam
 deps/*
 
+.eunit
+*/*~

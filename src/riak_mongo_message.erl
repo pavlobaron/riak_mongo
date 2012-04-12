@@ -27,18 +27,20 @@
 -include ("riak_mongo_protocol.hrl").
 -include_lib("riak_mongo_state.hrl").
 
-process_message(#mongo_query{ dbcoll= <<"admin.$cmd">>, selector={struct,[{<<"whatsmyuri">>,1}]}}, State) ->
+process_message(#mongo_query{ dbcoll= <<"admin.$cmd">>,
+                              selector=Selector }, State) ->
 
-    {reply, #mongo_reply{ documents=[{binary_to_atom(iolist_to_binary(you(State)), utf8), 1}]}, State};
+    {struct, [{Command,1}|Options]} = Selector,
 
-process_message(#mongo_query{ dbcoll= <<"admin.$cmd">>, selector={struct, [{<<"replSetGetStatus">>, 1},
-									    {<<"forShell">>, 1}]}}, State) ->
-    {reply, #mongo_reply{ documents=[{binary_to_atom(iolist_to_binary("not running with --replSet"),
-						     utf8), 1}]}, State};
+    case admin_command(Command, Options, State) of
+        {ok, Reply, State2} ->
+            {reply, #mongo_reply{ documents=[ {struct, Reply} ]} , State2}
+    end
+;
 
 process_message(#mongo_query{}=Message, State) ->
     error_logger:info_msg("unhandled query: ~p~n", [Message]),
-    {reply, #mongo_reply{ queryerror=true }, State};
+    {reply, #mongo_reply{ documents=[{struct, [{ok, false}]}], queryerror=true }, State};
 
 process_message(#mongo_insert{dbcoll=DbCol, documents=Documents}, State) ->
     process_insert(DbCol, Documents),
@@ -58,3 +60,13 @@ process_insert(_, []) ->
 process_insert(DbCol, [Document|L]) ->
     riak_mongo_store:insert(DbCol, Document),
     process_insert(DbCol, L).
+
+admin_command(<<"whatsmyuri">>, _Options, State) ->
+    {ok, [{you, {utf8, you(State)}}, {ok, 1}], State};
+
+admin_command(<<"replSetGetStatus">>, _Options, State) ->
+    _IsForShell = proplists:is_defined(forShell, _Options),
+    {ok, [{ok, false}], State};
+
+admin_command(Command, _Options, State) ->
+    {ok, [{err, <<"unknown command: ", Command/binary>>}, {ok, false}], State}.

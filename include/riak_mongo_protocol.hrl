@@ -1,4 +1,11 @@
 
+%%
+%% Decoded mongo wire messages
+%%
+%% NOTE: request_id *must* be the first attribute; riak_mongo_server
+%% logic depends on it to set corresponding field in replies.
+%%
+
 -record (mongo_insert, {
            request_id :: integer(),
            dbcoll :: binary(),
