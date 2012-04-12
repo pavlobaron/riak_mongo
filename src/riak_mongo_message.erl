@@ -27,16 +27,20 @@
 -include ("riak_mongo_protocol.hrl").
 -include_lib("riak_mongo_state.hrl").
 
-process_message(#mongo_query{ dbcoll= <<"admin.$cmd">>, selector={whatsmyuri, 1}}, State) ->
-    {reply, #mongo_reply{ documents=[{binary_to_atom(iolist_to_binary(you(State)), utf8), 1}]}, State};
+process_message(#mongo_query{ dbcoll= <<"admin.$cmd">>,
+                              selector=Selector }, State) ->
 
-process_message(#mongo_query{ dbcoll= <<"admin.$cmd">>, selector={replSetGetStatus, 1, forShell, 1}}, State) ->
-    {reply, #mongo_reply{ documents=[{binary_to_atom(iolist_to_binary("not running with --replSet"),
-						     utf8), 1}]}, State};
+    {struct, [{Command,1}|Options]} = Selector,
+
+    case admin_command(Command, Options, State) of
+        {ok, Reply, State2} ->
+            {reply, #mongo_reply{ documents=[ {struct, Reply} ]} , State2}
+    end
+;
 
 process_message(#mongo_query{}=Message, State) ->
     error_logger:info_msg("unhandled query: ~p~n", [Message]),
-    {reply, #mongo_reply{ queryerror=true }, State};
+    {reply, #mongo_reply{ documents=[{struct, [{ok, false}]}], queryerror=true }, State};
 
 process_message(Message, State) ->
     error_logger:info_msg("unhandled message: ~p~n", [Message]),
@@ -46,3 +50,15 @@ process_message(Message, State) ->
 you(#state{peer=Peer}) ->
     {ok, {{A, B, C, D}, P}} = Peer, %IPv6???
     io_lib:format("~p.~p.~p.~p:~p", [A, B, C, D, P]).
+
+
+admin_command(<<"whatsmyuri">>, _Options, State) ->
+    {ok, [{you, {utf8, you(State)}}, {ok, 1}], State};
+
+admin_command(<<"replSetGetStatus">>, _Options, State) ->
+    _IsForShell = proplists:is_defined(forShell, _Options),
+    {ok, [{ok, false}], State};
+
+admin_command(Command, _Options, State) ->
+    {ok, [{err, <<"unknown command: ", Command/binary>>}, {ok, false}], State}.
+
