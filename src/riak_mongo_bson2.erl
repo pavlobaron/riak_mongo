@@ -32,7 +32,8 @@
 
 -module(riak_mongo_bson2).
 
--export([get_document/1, get_raw_document/1, value_type/1]).
+-export([get_document/1, get_raw_document/1, get_cstring/1, value_type/1]).
+-export([encode_document/1]).
 
 -include("riak_mongo_bson2.hrl").
 
@@ -251,3 +252,91 @@ value_type('$min_key') ->
     ?MIN_KEY_TAG;
 value_type('$max_key') ->
     ?MAX_KEY_TAG.
+
+
+encode_document({struct, Elements}) ->
+    Body = << <<(encode_element (Key,Value)) /binary>> || {Key,Value} <- Elements>>,
+    << (byte_size(Body)+5):32/unsigned-little, Body/binary, 0 >>.
+
+encode_array(List) ->
+    Elems = array_to_elements(0, List),
+    encode_document({struct, Elems}).
+
+array_to_elements(_, []) ->
+    [];
+array_to_elements(N, [Value|Tail]) ->
+    [{ list_to_binary(integer_to_list(N)), Value } | array_to_elements(N+1, Tail)].
+
+encode_string(String) when is_binary(String) ->
+    <<(byte_size(String)+1):32/little-unsigned, String/binary, 0>>;
+encode_string(String) when is_list(String) ->
+    encode_string( unicode:characters_to_binary(String) );
+encode_string(String) when is_atom(String) ->
+    encode_string( atom_to_binary(String, utf8) );
+encode_string({utf8, String}) ->
+    encode_string( iolist_to_binary([String]) ).
+
+encode_cstring(String) when is_binary(String) ->
+    <<String/binary, 0>>;
+encode_cstring(String) when is_list(String) ->
+    encode_cstring( unicode:characters_to_binary(String) );
+encode_cstring(String) when is_atom(String) ->
+    encode_cstring( atom_to_binary(String, utf8) ).
+
+
+encode_element(Name, Value) when is_float(Value) ->
+    <<?DOUBLE_TAG, (encode_cstring(Name))/binary, Value:64/float>>;
+encode_element(Name, Value) when is_binary(Value) ->
+    <<?STRING_TAG, (encode_cstring(Name))/binary, (encode_string(Value))/binary >>;
+encode_element(Name, {utf8,_}=Value) ->
+    <<?STRING_TAG, (encode_cstring(Name))/binary, (encode_string(Value))/binary >>;
+encode_element(Name, {struct, Elems}=Document) when is_list(Elems) ->
+    <<?DOCUMENT_TAG, (encode_cstring(Name))/binary, (encode_document(Document))/binary >>;
+encode_element(Name, Value) when is_list(Value) ->
+    <<?ARRAY_TAG, (encode_cstring(Name))/binary, (encode_array(Value))/binary >>;
+
+encode_element(Name, {binary, Value}) when is_binary(Value) ->
+    <<?BINARY_TAG, (encode_cstring(Name))/binary, (byte_size(Value)):32/little, 16#00, Value>>;
+encode_element(Name, {function, Value}) when is_binary(Value) ->
+    <<?BINARY_TAG, (encode_cstring(Name))/binary, (byte_size(Value)):32/little, 16#01, Value>>;
+encode_element(Name, {uuid, Value}) when is_binary(Value) ->
+    <<?BINARY_TAG, (encode_cstring(Name))/binary, (byte_size(Value)):32/little, 16#03, Value>>;
+encode_element(Name, {md5, Value}) when is_binary(Value) ->
+    <<?BINARY_TAG, (encode_cstring(Name))/binary, (byte_size(Value)):32/little, 16#04, Value>>;
+
+encode_element(Name, undefined) ->
+    <<?UNDEFINED_TAG, (encode_cstring(Name))/binary>>;
+
+encode_element(Name, {objectid, ID}) when byte_size(ID) =:= 12 ->
+    <<?OBJECTID_TAG, (encode_cstring(Name))/binary, ID/binary>>;
+
+encode_element(Name, true) ->
+    <<?BOOLEAN_TAG, (encode_cstring(Name))/binary, 1>>;
+
+encode_element(Name, false) ->
+    <<?BOOLEAN_TAG, (encode_cstring(Name))/binary, 0>>;
+
+encode_element(Name, {MegaSecs, Secs, MicroSecs})
+  when is_integer(MegaSecs), is_integer(Secs), is_integer(MicroSecs) ->
+    <<?UTC_TIME_TAG, (encode_cstring(Name))/binary, (MegaSecs * 1000000000 + Secs * 1000 + MicroSecs div 1000):64/little>>;
+
+encode_element(Name, null) ->
+    <<?NULL_TAG, (encode_cstring(Name))/binary>>;
+
+encode_element(Name, {regex, Regex, Options}) ->
+    <<?REGEX_TAG, (encode_cstring(Name))/binary, Regex/binary, 0, Options/binary, 0>>;
+
+encode_element(Name, {javascript, String}) ->
+    <<?JAVASCRIPT_TAG, (encode_cstring(Name))/binary, (encode_string(String))/binary >>;
+
+encode_element(Name, {symbol, String}) ->
+    <<?SYMBOL_TAG, (encode_cstring(Name))/binary, (encode_string(String))/binary >>;
+
+encode_element(Name, Int32) when Int32 >= -16#80000000, Int32 =< 16#7fffffff ->
+    <<?INT32_TAG, (encode_cstring(Name))/binary, Int32:32/little-signed>>;
+encode_element(Name, Int64) when Int64 >= -16#8000000000000000, Int64 =< 16#7fffffffffffffff ->
+    <<?INT64_TAG, (encode_cstring(Name))/binary, Int64:64/little-signed>>;
+encode_element(Name, '$min_key') ->
+    <<?MIN_KEY_TAG, (encode_cstring(Name))/binary>>;
+encode_element(Name, '$max_key') ->
+    <<?MAX_KEY_TAG, (encode_cstring(Name))/binary>>.
