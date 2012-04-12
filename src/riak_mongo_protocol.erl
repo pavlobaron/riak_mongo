@@ -164,20 +164,6 @@ encode_packet(#mongo_reply{
             ?put_int32(length(Documents)),
             << <<(bson_binary:put_document (Doc)) /binary>> || Doc <- Documents>> /binary >>}.
 
-
-%%
-%%
-%%
-%get_all_docs(Binary) ->
-%    get_all_docs(Binary, []).
-
-%get_all_docs(<<>>, Acc) ->
-%    lists:reverse(Acc);
-%get_all_docs(Data, Acc) ->
-%    {Doc, Rest} = riak:get_document(Data),
-%    get_all_docs(Rest, [Doc|Acc]).
-
-
 get_int64_list(Num, Binary) ->
     get_int64_list(Num, Binary, []).
 

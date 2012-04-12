@@ -47,4 +47,8 @@ do_fields(B) ->
 
 -spec encode_struct(tuple()) -> binary().
 encode_struct(Struct) ->
+
+
+error_logger:info_msg("~p", [mochijson2:encode(Struct)]),
+
     iolist_to_binary(mochijson2:encode(Struct)).
