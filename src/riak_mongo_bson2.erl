@@ -130,8 +130,8 @@ get_element_value(?OBJECTID_TAG, <<ObjectID:12/binary, Rest/binary>>) ->
 
 get_element_value(?BOOLEAN_TAG, <<Bool, Rest/binary>>) ->
     case Bool of
-        0 -> {true, Rest};
-        1 -> {false, Rest}
+        1 -> {true, Rest};
+        0 -> {false, Rest}
     end;
 
 get_element_value(?UTC_TIME_TAG, <<MilliSecs:64/little-unsigned, Rest/binary>>) ->
