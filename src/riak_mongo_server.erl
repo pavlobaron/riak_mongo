@@ -47,7 +47,7 @@ new_connection(Sock, State) ->
     {ok, State}.
 
 sock_opts() ->
-    [binary, {active, once}, {packet, 0}].
+    [binary, {active, once}, {packet, 0}, {reuseaddr, true}].
 
 %% this should really be a process under supervision
 
