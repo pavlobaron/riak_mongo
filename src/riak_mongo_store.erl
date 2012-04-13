@@ -2,6 +2,7 @@
 %% This file is part of riak_mongo
 %%
 %% Copyright (c) 2012 by Pavlo Baron (pb at pbit dot org)
+%% Copyright (c) 2012 by Trifork
 %%
 %% Licensed under the Apache License, Version 2.0 (the "License");
 %% you may not use this file except in compliance with the License.
@@ -17,8 +18,9 @@
 %%
 
 %% @author Pavlo Baron <pb at pbit dot org>
+%% @author Kresten Krab Thorup <krab@trifork.com>
 %% @doc Here we speak to the Riak store
-%% @copyright 2012 Pavlo Baron
+%% @copyright 2012 Pavlo Baron and Trifork
 
 -module(riak_mongo_store).
 
@@ -52,46 +54,111 @@ insert(#mongo_insert{dbcoll=Collection, documents=Docs, continueonerror=Continue
     State#state{ lastError=Errors }.
 
 
+%%
+%% we'll need this lots of places, it should probably be
+%% in a separate "js emulation" module
+%%
+is_true(undefined) -> false;
+is_true(null) -> false;
+is_true(false) -> false;
+is_true(0) -> false;
+is_true(0.0) -> false;
+is_true(_) -> true.
 
-find(#mongo_query{dbcoll=Collection, selector=Selector}) ->
 
+find(#mongo_query{dbcoll=Collection, selector=Selector, projector=Projection }) ->
+
+    Project = compute_projection_fun(Projection),
     CompiledQuery = riak_mongo_query:compile(Selector),
 
-    % query!!!
-    % if NumberToReturn < 0 then we close the cursor (cursor? state?)
-    {ok, C} = riak:local_client(),
-    {ok, L} = C:list_keys(Collection),
+    {ok, Documents}
+        = riak_kv_mrc_pipe:mapred(Collection,
+                                  [{map, {qfun, fun map_query/3}, {CompiledQuery, Project}, true}]),
 
-    %%
-    %% 1. this needs to honor batch sizes
-    %% 2. this should be a mapreduce job
-    %%
+    Documents.
 
-    lists:foldl(fun(Key, Acc) ->
-                        case C:get(Collection, Key) of
-                            {ok, O} ->
-                                MD = riak_object:get_metadata(O),
-                                case dict:find(<<"content-type">>, MD) of
-                                    {ok, "application/bson"} ->
-                                        BSON = riak_object:get_value(O),
-                                        {Document, _} = riak_mongo_bson2:get_document(BSON),
-                                        case riak_mongo_query:matches(Document,
-                                                                      CompiledQuery) of
-                                            true ->
-                                                [Document|Acc];
-                                            false ->
-                                                Acc
-                                        end;
-                                    _ ->
-                                        Acc
-                                end;
-                            _ ->
-                                Acc
-                        end
-                end,
-                [],
-                L).
 
+map_query(Object, _KeyData, {CompiledQuery, Project}) ->
+    Acc = [],
+    MD = riak_object:get_metadata(Object),
+    case dict:find(<<"content-type">>, MD) of
+        {ok, "application/bson"} ->
+            BSON = riak_object:get_value(Object),
+
+            case catch riak_mongo_bson2:get_document(BSON) of
+                {{struct, _}=Document, _} ->
+                    do_mongo_match(Document, CompiledQuery, Project, Acc);
+                _ ->
+                    Acc
+            end;
+
+        %% also query any JSON documents
+        {ok, "application/json"} ->
+            JSON = riak_object:get_value(Object),
+
+            case catch mochijson2:decode(JSON) of
+                {struct, _}=Document ->
+                    do_mongo_match(Document, CompiledQuery, Project, Acc);
+                _ ->
+                    Acc
+            end;
+
+        _ ->
+            Acc
+    end.
+
+do_mongo_match(Document,CompiledQuery,Project,Acc) ->
+    case riak_mongo_query:matches(Document,
+                                  CompiledQuery) of
+        true ->
+            [Project(Document)|Acc];
+        false ->
+            Acc
+    end.
+
+compute_projection_fun(Projection) ->
+    case Projection of
+        [] ->
+            fun(O) -> O end;
+
+        List when is_list(List) ->
+            SelectedKeys = get_projection_keys(Projection, []),
+            fun({struct, Elems}) ->
+                    {struct,
+                     lists:foldl(fun(Key,Acc) ->
+                                         case lists:keyfind(Key, 1, Elems) of
+                                             false ->
+                                                 Acc;
+                                             KV ->
+                                                 [KV|Acc]
+                                         end
+                                 end,
+                                 [],
+                                 SelectedKeys
+                                )}
+            end
+    end.
+
+get_projection_keys([], Acc) ->
+    Acc;
+get_projection_keys([{struct, KVs}|Rest], Acc) ->
+    Keys = lists:usort
+             (lists:foldl(fun({K,V}, Acc1) ->
+                                  case is_true(V) of
+                                      true -> [K|Acc1];
+                                      false -> Acc1
+                                  end
+                          end,
+                          [],
+                          KVs)),
+
+    get_projection_keys(Rest, lists:umerge(Keys,Acc)).
+
+
+
+delete(Delete) ->
+    error_logger:error_msg("delete not implemented: ~p~n", Delete),
+    ok.
 
 
 bson_to_riak_key({objectid, BIN}) ->
