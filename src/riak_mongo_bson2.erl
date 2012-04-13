@@ -105,7 +105,7 @@ get_element(<<Tag, Rest0/binary>>) ->
     {Value, Rest2} = get_element_value(Tag, Rest1),
     {{Name,Value}, Rest2}.
 
-get_element_value(?DOUBLE_TAG, <<Value:64/float, Rest/binary>>) ->
+get_element_value(?DOUBLE_TAG, <<Value:64/float-little, Rest/binary>>) ->
     {Value, Rest};
 
 get_element_value(?STRING_TAG, Rest) ->
@@ -285,7 +285,7 @@ encode_cstring(String) when is_atom(String) ->
 
 
 encode_element(Name, Value) when is_float(Value) ->
-    <<?DOUBLE_TAG, (encode_cstring(Name))/binary, Value:64/float>>;
+    <<?DOUBLE_TAG, (encode_cstring(Name))/binary, Value:64/float-little>>;
 encode_element(Name, Value) when is_binary(Value) ->
     <<?STRING_TAG, (encode_cstring(Name))/binary, (encode_string(Value))/binary >>;
 encode_element(Name, {utf8,_}=Value) ->
