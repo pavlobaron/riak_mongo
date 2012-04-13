@@ -38,6 +38,17 @@ process_message(#mongo_query{ dbcoll= <<"admin.$cmd">>,
     end
 ;
 
+process_message(#mongo_query{ dbcoll= <<"collection.$cmd">>,
+                              selector=Selector}, State) ->
+
+    {struct, [{Command,_}|Options]} = Selector,
+
+    case collection_command(Command, Options, State) of
+        {ok, Reply, State2} ->
+            {reply, #mongo_reply{ documents=[ {struct, Reply} ]} , State2}
+    end
+;
+
 process_message(#mongo_query{}=Message, State) ->
     error_logger:info_msg("unhandled query: ~p~n", [Message]),
     {reply, #mongo_reply{ documents=[{struct, [{ok, false}]}], queryerror=true }, State};
@@ -60,5 +71,17 @@ admin_command(<<"replSetGetStatus">>, _Options, State) ->
     {ok, [{ok, false}], State};
 
 admin_command(Command, _Options, State) ->
+    {ok, [{err, <<"unknown command: ", Command/binary>>}, {ok, false}], State}.
+
+collection_command(<<"getlasterror">>, _Options, State) ->
+    case State#state.lastError of
+        [] ->
+            {ok, [{ok,true}], State#state{lastError=[]}};
+        MSG ->
+            {ok, [{err, io:format("~p", MSG)}], State#state{lastError=[]}}
+    end;
+
+
+collection_command(Command, _Options, State) ->
     {ok, [{err, <<"unknown command: ", Command/binary>>}, {ok, false}], State}.
 
