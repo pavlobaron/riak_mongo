@@ -22,12 +22,34 @@
 
 -module(riak_mongo_store).
 
-%-export([insert/1, find/1]).
+-include("riak_mongo_bson2.hrl").
+-include("riak_mongo_protocol.hrl").
+-include("riak_mongo_state.hrl").
 
-%insert(#mongo_insert{dbcol=Collection, documents=Doc}) ->
-%    {ok, C} = riak:local_client(),
-%    O = riak_object:new(Collection, ID, Doc),
-%    C:put(O).
+-export([insert/2]).
+
+insert(#mongo_insert{dbcoll=Collection, documents=Docs, continueonerror=ContinueOnError}, State) ->
+
+    {ok, C} = riak:local_client(),
+
+    Errors =
+        lists:foldl(fun(#bson_raw_document{ id=BSON_ID, body=Doc }, Err)
+                          when Err=:=[]; ContinueOnError=:=true ->
+                            ID = bson_to_riak_key(BSON_ID),
+
+                            O = riak_object:new(Collection, ID, Doc, "application/bson"),
+
+                            error_logger:info_msg("storing ~p~n", [O]),
+
+                            case C:put(O) of
+                                ok -> Err;
+                                Error -> [Error|Err]
+                            end
+                    end,
+                    [],
+                    Docs),
+
+    State#state{ lastError=Errors }.
 
 %find(#mongo_query=Query) ->
     % query!!!
@@ -41,3 +63,18 @@
 %collect_objects(C, [Key|L]) ->
 %    {ok, O} = C:get(Collection, Key),
 %    [riak_object:get_value(O)|collect_objects(C, L)].
+
+
+bson_to_riak_key({objectid, BIN}) ->
+    iolist_to_binary("OID:" ++ hexencode(BIN)).
+
+hexencode(<<>>) -> [];
+hexencode(<<CH, Rest/binary>>) ->
+    [ hex(CH) | hexencode(Rest) ].
+
+hex(CH) when CH < 16 ->
+    [ $0, integer_to_list(CH, 16) ];
+hex(CH) ->
+    integer_to_list(CH, 16).
+
+

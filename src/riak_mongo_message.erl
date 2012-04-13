@@ -53,6 +53,10 @@ process_message(#mongo_query{}=Message, State) ->
     error_logger:info_msg("unhandled query: ~p~n", [Message]),
     {reply, #mongo_reply{ documents=[{struct, [{ok, false}]}], queryerror=true }, State};
 
+process_message(#mongo_insert{}=Insert, State) ->
+    State2 = riak_mongo_store:insert(Insert, State),
+    {noreply, State2};
+
 process_message(Message, State) ->
     error_logger:info_msg("unhandled message: ~p~n", [Message]),
     {noreply, State}.
