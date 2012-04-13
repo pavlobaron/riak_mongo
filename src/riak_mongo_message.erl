@@ -50,8 +50,11 @@ process_message(#mongo_query{ dbcoll= <<"collection.$cmd">>,
 ;
 
 process_message(#mongo_query{}=Message, State) ->
-    error_logger:info_msg("unhandled query: ~p~n", [Message]),
-    {reply, #mongo_reply{ documents=[{struct, [{ok, false}]}], queryerror=true }, State};
+
+    error_logger:info_msg("query: ~p~n", [Message]),
+
+    Result = riak_mongo_store:find(Message),
+    {reply, #mongo_reply{ documents=Result, queryerror=false }, State};
 
 process_message(#mongo_insert{}=Insert, State) ->
     State2 = riak_mongo_store:insert(Insert, State),

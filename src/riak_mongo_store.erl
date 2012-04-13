@@ -26,7 +26,7 @@
 -include("riak_mongo_protocol.hrl").
 -include("riak_mongo_state.hrl").
 
--export([insert/2]).
+-export([insert/2, find/1]).
 
 insert(#mongo_insert{dbcoll=Collection, documents=Docs, continueonerror=ContinueOnError}, State) ->
 
@@ -51,18 +51,47 @@ insert(#mongo_insert{dbcoll=Collection, documents=Docs, continueonerror=Continue
 
     State#state{ lastError=Errors }.
 
-%find(#mongo_query=Query) ->
+
+
+find(#mongo_query{dbcoll=Collection, selector=Selector}) ->
+
+    CompiledQuery = riak_mongo_query:compile(Selector),
+
     % query!!!
     % if NumberToReturn < 0 then we close the cursor (cursor? state?)
-%    {ok, C} = riak:local_client(),
-%    {ok, L} = C:list_keys(Collection),
-%    collect_objects(C, L).
+    {ok, C} = riak:local_client(),
+    {ok, L} = C:list_keys(Collection),
 
-%collect_objects(_, []) ->
-%    [];
-%collect_objects(C, [Key|L]) ->
-%    {ok, O} = C:get(Collection, Key),
-%    [riak_object:get_value(O)|collect_objects(C, L)].
+    %%
+    %% 1. this needs to honor batch sizes
+    %% 2. this should be a mapreduce job
+    %%
+
+    lists:foldl(fun(Key, Acc) ->
+                        case C:get(Collection, Key) of
+                            {ok, O} ->
+                                MD = riak_object:get_metadata(O),
+                                case dict:find(<<"content-type">>, MD) of
+                                    {ok, "application/bson"} ->
+                                        BSON = riak_object:get_value(O),
+                                        {Document, _} = riak_mongo_bson2:get_document(BSON),
+                                        case riak_mongo_query:matches(Document,
+                                                                      CompiledQuery) of
+                                            true ->
+                                                [Document|Acc];
+                                            false ->
+                                                Acc
+                                        end;
+                                    _ ->
+                                        Acc
+                                end;
+                            _ ->
+                                Acc
+                        end
+                end,
+                [],
+                L).
+
 
 
 bson_to_riak_key({objectid, BIN}) ->
