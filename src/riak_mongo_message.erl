@@ -27,23 +27,15 @@
 -include ("riak_mongo_protocol.hrl").
 -include_lib("riak_mongo_state.hrl").
 
-process_message(#mongo_query{ dbcoll= <<"admin.$cmd">>,
-                              selector=Selector }, State) ->
+-define(CMD,<<"$cmd">>).
+-define(ADM,<<"admin">>).
 
-    {struct, [{Command,1}|Options]} = Selector,
-
-    case admin_command(Command, Options, State) of
-        {ok, Reply, State2} ->
-            {reply, #mongo_reply{ documents=[ {struct, Reply} ]} , State2}
-    end
-;
-
-process_message(#mongo_query{ dbcoll= <<"collection.$cmd">>,
+process_message(#mongo_query{ db=DataBase, coll=?CMD,
                               selector=Selector}, State) ->
 
     {struct, [{Command,_}|Options]} = Selector,
 
-    case collection_command(Command, Options, State) of
+    case db_command(DataBase, Command, Options, State) of
         {ok, Reply, State2} ->
             {reply, #mongo_reply{ documents=[ {struct, Reply} ]} , State2}
     end
@@ -51,13 +43,15 @@ process_message(#mongo_query{ dbcoll= <<"collection.$cmd">>,
 
 process_message(#mongo_query{}=Message, State) ->
 
-    error_logger:info_msg("query: ~p~n", [Message]),
-
     Result = riak_mongo_store:find(Message),
     {reply, #mongo_reply{ documents=Result, queryerror=false }, State};
 
 process_message(#mongo_insert{}=Insert, State) ->
     State2 = riak_mongo_store:insert(Insert, State),
+    {noreply, State2};
+
+process_message(#mongo_delete{}=Delete, State) ->
+    State2 = riak_mongo_store:delete(Delete, State),
     {noreply, State2};
 
 process_message(Message, State) ->
@@ -70,17 +64,15 @@ you(#state{peer=Peer}) ->
     io_lib:format("~p.~p.~p.~p:~p", [A, B, C, D, P]).
 
 
-admin_command(<<"whatsmyuri">>, _Options, State) ->
+db_command(?ADM, <<"whatsmyuri">>, _Options, State) ->
     {ok, [{you, {utf8, you(State)}}, {ok, 1}], State};
 
-admin_command(<<"replSetGetStatus">>, _Options, State) ->
+db_command(?ADM, <<"replSetGetStatus">>, _Options, State) ->
     _IsForShell = proplists:is_defined(forShell, _Options),
     {ok, [{ok, false}], State};
 
-admin_command(Command, _Options, State) ->
-    {ok, [{err, <<"unknown command: ", Command/binary>>}, {ok, false}], State}.
 
-collection_command(<<"getlasterror">>, _Options, State) ->
+db_command(_DataBase, <<"getlasterror">>, _Options, State) ->
     case State#state.lastError of
         [] ->
             {ok, [{ok,true}], State#state{lastError=[]}};
@@ -89,6 +81,6 @@ collection_command(<<"getlasterror">>, _Options, State) ->
     end;
 
 
-collection_command(Command, _Options, State) ->
-    {ok, [{err, <<"unknown command: ", Command/binary>>}, {ok, false}], State}.
+db_command(DataBase, Command, _Options, State) ->
+    {ok, [{err, <<"unknown command: db=", DataBase, ", cmd=", Command/binary>>}, {ok, false}], State}.
 

@@ -111,8 +111,12 @@ decode_packet(<< ?HDR(_, ?QueryOpcode),
     << ?get_int32(NumberToSkip), ?get_int32(NumberToReturn), Rest2/binary >> = Rest1,
     [Query | ReturnFieldSelectors ] = get_all_docs(Rest2),
 
+    {DB,Coll} = split_dbcoll(DBColl),
+
     {ok, #mongo_query{ request_id=RequestId,
                        dbcoll=DBColl,
+                       db=DB,
+                       coll=Coll,
                        tailablecursor=bool(Tailable),
                        slaveok=bool(SlaveOK),
                        nocursortimeout=bool(NoCursorTimeout),
