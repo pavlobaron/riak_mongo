@@ -32,7 +32,10 @@
 
 -record (mongo_query, {
            request_id :: integer(),
+
            dbcoll :: binary(),
+           db :: binary(),
+           coll :: binary(),
 
            tailablecursor = false :: boolean(),
            slaveok = false :: boolean(),

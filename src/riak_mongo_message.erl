@@ -16,6 +16,7 @@
 %% limitations under the License.
 %%
 
+%% @author Kresten Krab Thorup <krab@trifork.com>
 %% @author Pavlo Baron <pb at pbit dot org>
 %% @doc Here we process all kind of messages
 %% @copyright 2012 Pavlo Baron
@@ -27,20 +28,32 @@
 -include ("riak_mongo_protocol.hrl").
 -include_lib("riak_mongo_state.hrl").
 
-process_message(#mongo_query{ dbcoll= <<"admin.$cmd">>,
-                              selector=Selector }, State) ->
+-define(CMD,<<"$cmd">>).
+-define(ADM,<<"admin">>).
 
-    {struct, [{Command,1}|Options]} = Selector,
+process_message(#mongo_query{ db=DataBase, coll=?CMD,
+                              selector=Selector}, State) ->
 
-    case admin_command(Command, Options, State) of
+    {struct, [{Command,_}|Options]} = Selector,
+
+    case db_command(DataBase, Command, Options, State) of
         {ok, Reply, State2} ->
             {reply, #mongo_reply{ documents=[ {struct, Reply} ]} , State2}
     end
 ;
 
 process_message(#mongo_query{}=Message, State) ->
-    error_logger:info_msg("unhandled query: ~p~n", [Message]),
-    {reply, #mongo_reply{ documents=[{struct, [{ok, false}]}], queryerror=true }, State};
+
+    Result = riak_mongo_store:find(Message),
+    {reply, #mongo_reply{ documents=Result, queryerror=false }, State};
+
+process_message(#mongo_insert{}=Insert, State) ->
+    State2 = riak_mongo_store:insert(Insert, State),
+    {noreply, State2};
+
+process_message(#mongo_delete{}=Delete, State) ->
+    State2 = riak_mongo_store:delete(Delete, State),
+    {noreply, State2};
 
 process_message(#mongo_insert{dbcoll=DbCol, documents=Documents}, State) ->
     process_insert(DbCol, Documents),
@@ -61,12 +74,20 @@ process_insert(DbCol, [Document|L]) ->
     riak_mongo_riak:insert(DbCol, Document),
     process_insert(DbCol, L).
 
-admin_command(<<"whatsmyuri">>, _Options, State) ->
+db_command(?ADM, <<"whatsmyuri">>, _Options, State) ->
     {ok, [{you, {utf8, you(State)}}, {ok, 1}], State};
 
-admin_command(<<"replSetGetStatus">>, _Options, State) ->
+db_command(?ADM, <<"replSetGetStatus">>, _Options, State) ->
     _IsForShell = proplists:is_defined(forShell, _Options),
     {ok, [{ok, false}], State};
 
-admin_command(Command, _Options, State) ->
-    {ok, [{err, <<"unknown command: ", Command/binary>>}, {ok, false}], State}.
+db_command(_DataBase, <<"getlasterror">>, _Options, State) ->
+    case State#state.lastError of
+        [] ->
+            {ok, [{ok,true}], State#state{lastError=[]}};
+        MSG ->
+            {ok, [{err, io:format("~p", MSG)}], State#state{lastError=[]}}
+    end;
+
+db_command(DataBase, Command, _Options, State) ->
+    {ok, [{err, <<"unknown command: db=", DataBase, ", cmd=", Command/binary>>}, {ok, false}], State}.

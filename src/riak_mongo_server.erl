@@ -46,4 +46,74 @@ new_connection(Sock, State) ->
     {ok, NewState}.
 
 sock_opts() ->
-    [binary, {active, once}, {packet, 0}].
+    [binary, {active, once}, {packet, 0}, {reuseaddr, true}].
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+%% this should really be a process under supervision
+
+worker(Owner) ->
+    receive {set_socket, Sock} -> ok end,
+    inet:setopts(Sock, [{active, once}]),
+    worker_loop(#state{ owner=Owner, sock=Sock, peer=inet:peername(Sock) }, <<>>).
+
+worker_loop(#state{sock=Sock}=State, UnprocessedData) ->
+    receive
+        {tcp, Sock, Data} ->
+            {Messages, Rest} = riak_mongo_protocol:decode_wire(<<UnprocessedData/binary, Data/binary>>),
+            State2 = process_messages(Messages, State),
+            inet:setopts(Sock, [{active, once}]),
+            worker_loop(State2, Rest);
+
+        {tcp_closed, Sock} ->
+            ok;
+
+        Msg ->
+            error_logger:info_msg("unknown message in worker loop: ~p~n", [Msg]),
+            exit(bad_msg)
+
+        %% timeout?
+    end.
+
+
+%%
+%% loop over messages
+%%
+process_messages([], State) ->
+    State;
+process_messages([Message|Rest], State) ->
+    error_logger:info_msg("processing ~p~n", [Message]),
+    case riak_mongo_message:process_message(Message, State) of
+        {noreply, OutState} ->
+            ok;
+
+        {reply, Reply, #state{ sock=Sock }=State2} ->
+            MessageID = element(2, Message),
+            ReplyMessage = Reply#mongo_reply{ request_id = State2#state.request_id,
+                                              reply_to = MessageID },
+            OutState = State2#state{ request_id = (State2#state.request_id+1) },
+
+            error_logger:info_msg("replying ~p~n", [ReplyMessage]),
+
+            {ok, Packet} = riak_mongo_protocol:encode_packet(ReplyMessage),
+            Size = byte_size(Packet),
+            gen_tcp:send(Sock, <<?put_int32(Size+4), Packet/binary>>)
+    end,
+
+    process_messages(Rest, OutState);
+process_messages(A1,A2) ->
+    error_logger:info_msg("BAD ~p,~p~n", [A1,A2]),
+    exit({badarg,A1,A2}).
