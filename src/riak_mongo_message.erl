@@ -58,7 +58,7 @@ you(#state{peer=Peer}) ->
 process_insert(_, []) ->
     ok;
 process_insert(DbCol, [Document|L]) ->
-    riak_mongo_store:insert(DbCol, Document),
+    riak_mongo_riak:insert(DbCol, Document),
     process_insert(DbCol, L).
 
 admin_command(<<"whatsmyuri">>, _Options, State) ->

@@ -67,7 +67,7 @@ bit(false) -> 0.
 
 decode_packet( << ?HDR(_, ?InsertOpcode), ?get_bits32(0,0,0,0,0,0,0,ContinueOnError), Rest/binary >> ) ->
     {DBColl, Rest1} = riak_mongo_bson2:get_cstring(Rest),
-    BsonDocs = get_all_docs(Rest1),
+    Docs = get_all_docs(Rest1),
     {ok, #mongo_insert{ dbcoll=DBColl,
                         request_id=RequestId,
                         documents=Docs,

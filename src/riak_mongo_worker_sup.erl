@@ -17,28 +17,22 @@
 %%
 
 %% @author Pavlo Baron <pb at pbit dot org>
-%% @doc Here we speak to the Riak store
+%% @doc This is the worker supervisor
 %% @copyright 2012 Pavlo Baron
 
--module(riak_mongo_store).
+-module(riak_mongo_worker_sup).
+-behaviour(supervisor).
 
--export([insert/2]).
+-export([start_link/0, init/1, new_worker/2]).
 
--spec insert(binary(), tuple()) -> term().
-insert(Bucket, {ID, Struct}) ->
-    {ok, C} = riak:local_client(),
-    O = riak_object:new(Bucket, ID, riak_mongo_decenc:encode_struct(Struct)),
-    C:put(O).
+start_link() ->
+    supervisor:start_link({local, ?MODULE}, ?MODULE, [Sock]).
 
-%find(#mongo_query=Query) ->
-    % query!!!
-    % if NumberToReturn < 0 then we close the cursor (cursor? state?)
-%    {ok, C} = riak:local_client(),
-%    {ok, L} = C:list_keys(Collection),
-%    collect_objects(C, L).
+init(Sock) ->
+    WorkerSpec = {worker,
+                  {riak_mongo_worker, start_link, [Sock, whereis(server)]},
+                  temporary, brutal_kill, worker, [riak_mongo_worker]},
+    {ok, {{simple_one_for_one, 0, 1}, [WorkerSpec]}}.
 
-%collect_objects(_, []) ->
-%    [];
-%collect_objects(C, [Key|L]) ->
-%    {ok, O} = C:get(Collection, Key),
-%    [riak_object:get_value(O)|collect_objects(C, L)].
+new_worker(Sock, OldOwner) ->
+    supervisor:start_child(worker_sup, [Sock, OldOwner]).

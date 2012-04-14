@@ -307,7 +307,7 @@ encode_element(Name, {md5, Value}) when is_binary(Value) ->
 encode_element(Name, undefined) ->
     <<?UNDEFINED_TAG, (encode_cstring(Name))/binary>>;
 
-encode_element(Name, {objectid, ID}) when byte_size(ID) =:= 12 ->
+encode_element(Name, {objectid, ID}) ->
     <<?OBJECTID_TAG, (encode_cstring(Name))/binary, ID/binary>>;
 
 encode_element(Name, true) ->
