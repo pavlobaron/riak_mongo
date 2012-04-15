@@ -66,19 +66,19 @@ bit(false) -> 0.
 
 
 decode_packet( << ?HDR(_, ?InsertOpcode), ?get_bits32(0,0,0,0,0,0,0,ContinueOnError), Rest/binary >> ) ->
-    {DBColl, Rest1} = riak_mongo_bson2:get_cstring(Rest),
+    {DBColl, Rest1} = riak_mongo_bson:get_cstring(Rest),
     BsonDocs = get_all_raw_docs(Rest1),
     {ok, #mongo_insert{ dbcoll=DBColl,
                         request_id=RequestId,
-                        documents=Docs,
+                        documents=BsonDocs,
                         continueonerror = bool(ContinueOnError)
                       }};
 
 decode_packet(<< ?HDR(_, ?UpdateOpcode), 0:32, Rest/binary>> ) ->
-    {DBColl, Rest1} = riak_mongo_bson2:get_cstring(Rest),
+    {DBColl, Rest1} = riak_mongo_bson:get_cstring(Rest),
     <<?get_bits32(0,0,0,0,0,0,MultiUpdate,Upsert), Rest2>> = Rest1,
-    {Selector, Rest3} = riak_mongo_bson2:get_document(Rest2),
-    {Update, <<>>} = riak_mongo_bson2:get_document(Rest3),
+    {Selector, Rest3} = riak_mongo_bson:get_document(Rest2),
+    {Update, <<>>} = riak_mongo_bson:get_document(Rest3),
 
     {ok, #mongo_update{ dbcoll=DBColl,
                         request_id=RequestId,
@@ -90,9 +90,9 @@ decode_packet(<< ?HDR(_, ?UpdateOpcode), 0:32, Rest/binary>> ) ->
                       }};
 
 decode_packet(<< ?HDR(_, ?DeleteOpcode), 0:32, Rest/binary >>) ->
-    {DBColl, Rest1} = riak_mongo_bson2:get_cstring(Rest),
+    {DBColl, Rest1} = riak_mongo_bson:get_cstring(Rest),
     <<?get_bits32(0,0,0,0,0,0,0,SingleRemove), Rest2>> = Rest1,
-    {Selector, <<>>} = riak_mongo_bson2:get_document(Rest2),
+    {Selector, <<>>} = riak_mongo_bson:get_document(Rest2),
 
     {ok, #mongo_delete{ dbcoll=DBColl,
                         request_id=RequestId,
@@ -107,7 +107,7 @@ decode_packet(<< ?HDR(_, ?KillcursorOpcode), 0:32, ?get_int32(NumCursorIDs), Res
 decode_packet(<< ?HDR(_, ?QueryOpcode),
                  ?get_bits32(Partial,Exhaust,AwaitData,NoCursorTimeout,OplogReplay,SlaveOK,Tailable,0),
                  Rest/binary >>) ->
-    {DBColl, Rest1} = riak_mongo_bson2:get_cstring(Rest),
+    {DBColl, Rest1} = riak_mongo_bson:get_cstring(Rest),
     << ?get_int32(NumberToSkip), ?get_int32(NumberToReturn), Rest2/binary >> = Rest1,
     [Query | ReturnFieldSelectors ] = get_all_docs(Rest2),
 
@@ -129,7 +129,7 @@ decode_packet(<< ?HDR(_, ?QueryOpcode),
                        projector=ReturnFieldSelectors }};
 
 decode_packet(<< ?HDR(_, ?GetmoreOpcode), 0:32, Rest/binary >>) ->
-    {DBColl, Rest1} = riak_mongo_bson2:get_cstring(Rest),
+    {DBColl, Rest1} = riak_mongo_bson:get_cstring(Rest),
     << ?get_int32(NumberToReturn), ?get_int64(CursorID) >> = Rest1,
 
     {ok, #mongo_getmore{ request_id=RequestId,
@@ -162,7 +162,7 @@ encode_packet(#mongo_reply{
             ?put_int64(CursorID),
             ?put_int32(StartingFrom),
             ?put_int32(length(Documents)),
-            << <<(riak_mongo_bson2:encode_document (Doc)) /binary>> || Doc <- Documents>> /binary >>}.
+            << <<(riak_mongo_bson:encode_document (Doc)) /binary>> || Doc <- Documents>> /binary >>}.
 
 %%
 %%
@@ -173,7 +173,7 @@ get_all_docs(Binary) ->
 get_all_docs(<<>>, Acc) ->
     lists:reverse(Acc);
 get_all_docs(Data, Acc) ->
-    {Doc, Rest} = riak_mongo_bson2:get_document(Data),
+    {Doc, Rest} = riak_mongo_bson:get_document(Data),
     get_all_docs(Rest, [Doc|Acc]).
 
 get_all_raw_docs(Binary) ->
@@ -182,7 +182,7 @@ get_all_raw_docs(Binary) ->
 get_all_raw_docs(<<>>, Acc) ->
     lists:reverse(Acc);
 get_all_raw_docs(Data, Acc) ->
-    {Doc, Rest} = riak_mongo_bson2:get_raw_document(Data),
+    {Doc, Rest} = riak_mongo_bson:get_raw_document(Data),
     get_all_raw_docs(Rest, [Doc|Acc]).
 
 get_int64_list(Num, Binary) ->

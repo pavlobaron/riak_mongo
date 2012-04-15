@@ -2,6 +2,7 @@
 %% This file is part of riak_mongo
 %%
 %% Copyright (c) 2012 by Pavlo Baron (pb at pbit dot org)
+%% Copyright (c) 2012 by Trifork
 %%
 %% Licensed under the Apache License, Version 2.0 (the "License");
 %% you may not use this file except in compliance with the License.
@@ -17,79 +18,157 @@
 %%
 
 %% @author Pavlo Baron <pb at pbit dot org>
+%% @author Kresten Krab Thorup <krab@trifork.com>
 %% @doc Here we speak to the Riak store
-%% @copyright 2012 Pavlo Baron
+%% @copyright 2012 Pavlo Baron and Trifork
 
 -module(riak_mongo_riak).
 
--export([insert/2]).
+-include("riak_mongo_bson.hrl").
+-include("riak_mongo_protocol.hrl").
+-include("riak_mongo_state.hrl").
 
--include("riak_mongo_bson2.hrl").
+-export([insert/2, find/1, delete/1]).
 
--spec insert(bson_objectid(), bson_document()) ->
-		    ok |
-		    {error, too_many_fails} |
-		    {error, timeout} |
-		    {error, {n_val_violation, N::integer()}}.
-insert(Bucket, Document) ->
-    %{ok, C} = riak:local_client(),
-    %O = riak_object:new(Bucket, ID, to_json(Document)),
-    %C:put(O).
-    to_json(Document).
+insert(#mongo_insert{dbcoll=Bucket, documents=Docs, continueonerror=ContinueOnError}, State) ->
 
-%find(#mongo_query=Query) ->
-    % query!!!
-    % if NumberToReturn < 0 then we close the cursor (cursor? state?)
-%    {ok, C} = riak:local_client(),
-%    {ok, L} = C:list_keys(Collection),
-%    collect_objects(C, L).
+    {ok, C} = riak:local_client(),
 
-%collect_objects(_, []) ->
-%    [];
-%collect_objects(C, [Key|L]) ->
-%    {ok, O} = C:get(Collection, Key),
-%    [riak_object:get_value(O)|collect_objects(C, L)].
+    Errors =
+        lists:foldl(fun(#bson_raw_document{ id=BSON_ID, body=Doc }, Err)
+                          when Err=:=[]; ContinueOnError=:=true ->
+                            ID = bson_to_riak_key(BSON_ID),
 
+                            O = riak_object:new(Bucket, ID, Doc, "application/bson"),
 
+                            error_logger:info_msg("storing ~p~n", [O]),
 
-%% internals
+                            case C:put(O) of
+                                ok -> Err;
+                                Error -> [Error|Err]
+                            end
+                    end,
+                    [],
+                    Docs),
 
-to_json(Document) ->
+    State#worker_state{ lastError=Errors }.
 
 
-error_logger:info_msg("~p~n", [term_to_binary(Document)]),
-
-    iolist_to_binary(mochijson2:encode(term_to_binary(Document))).
-
-encode_document(Document) ->
-    encode_element(Document).
-
-encode_elements([]) ->
-    [];
-encode_elements([Element|T]) ->
-    [encode_element(Element)|encode_elements(T)].
-
-encode_element(Element) when is_atom(Element) ->
+%%
+%% we'll need this lots of places, it should probably be
+%% in a separate "js emulation" module
+%%
+is_true(undefined) -> false;
+is_true(null) -> false;
+is_true(false) -> false;
+is_true(0) -> false;
+is_true(0.0) -> false;
+is_true(_) -> true.
 
 
-    error_logger:info_msg("atom E: ~p~n", [Element]),
-    
+find(#mongo_query{dbcoll=Collection, selector=Selector, projector=Projection }) ->
+
+    Project = compute_projection_fun(Projection),
+    CompiledQuery = riak_mongo_query:compile(Selector),
+
+    {ok, Documents}
+        = riak_kv_mrc_pipe:mapred(Collection,
+                                  [{map, {qfun, fun map_query/3}, {CompiledQuery, Project}, true}]),
+
+    Documents.
 
 
-    %S = atom_to_list(Element),
-    <<"aaa">>;
-encode_element(Element) when is_list(Element) ->
+map_query(Object, _KeyData, {CompiledQuery, Project}) ->
+    Acc = [],
+    MD = riak_object:get_metadata(Object),
+    case dict:find(<<"content-type">>, MD) of
+        {ok, "application/bson"} ->
+            BSON = riak_object:get_value(Object),
 
-error_logger:info_msg("list E: ~p~n", [Element]),
+            case catch riak_mongo_bson:get_document(BSON) of
+                {{struct, _}=Document, _} ->
+                    do_mongo_match(Document, CompiledQuery, Project, Acc);
+                _ ->
+                    Acc
+            end;
 
-    case is_tuple(lists:nth(1, Element)) of
-	true -> encode_elements(Element);
-	false -> Element
-    end,
-    encode_elements(Element);
-encode_element(Element) when is_tuple(Element) ->
+        %% also query any JSON documents
+        {ok, "application/json"} ->
+            JSON = riak_object:get_value(Object),
 
-error_logger:info_msg("tuple E: ~p~n", [Element]),
+            case catch mochijson2:decode(JSON) of
+                {struct, _}=Document ->
+                    do_mongo_match(Document, CompiledQuery, Project, Acc);
+                _ ->
+                    Acc
+            end;
 
-    list_to_tuple(encode_elements(tuple_to_list(Element)));
-encode_element(Element) -> Element.
+        _ ->
+            Acc
+    end.
+
+do_mongo_match(Document,CompiledQuery,Project,Acc) ->
+    case riak_mongo_query:matches(Document,
+                                  CompiledQuery) of
+        true ->
+            [Project(Document)|Acc];
+        false ->
+            Acc
+    end.
+
+compute_projection_fun(Projection) ->
+    case Projection of
+        [] ->
+            fun(O) -> O end;
+
+        List when is_list(List) ->
+            SelectedKeys = get_projection_keys(Projection, []),
+            fun({struct, Elems}) ->
+                    {struct,
+                     lists:foldl(fun(Key,Acc) ->
+                                         case lists:keyfind(Key, 1, Elems) of
+                                             false ->
+                                                 Acc;
+                                             KV ->
+                                                 [KV|Acc]
+                                         end
+                                 end,
+                                 [],
+                                 SelectedKeys
+                                )}
+            end
+    end.
+
+get_projection_keys([], Acc) ->
+    Acc;
+get_projection_keys([{struct, KVs}|Rest], Acc) ->
+    Keys = lists:usort
+             (lists:foldl(fun({K,V}, Acc1) ->
+                                  case is_true(V) of
+                                      true -> [K|Acc1];
+                                      false -> Acc1
+                                  end
+                          end,
+                          [],
+                          KVs)),
+
+    get_projection_keys(Rest, lists:umerge(Keys,Acc)).
+
+
+
+delete(Delete) ->
+    error_logger:error_msg("delete not implemented: ~p~n", Delete),
+    ok.
+
+
+bson_to_riak_key({objectid, BIN}) ->
+    iolist_to_binary("OID:" ++ hexencode(BIN)).
+
+hexencode(<<>>) -> [];
+hexencode(<<CH, Rest/binary>>) ->
+    [ hex(CH) | hexencode(Rest) ].
+
+hex(CH) when CH < 16 ->
+    [ $0, integer_to_list(CH, 16) ];
+hex(CH) ->
+    integer_to_list(CH, 16).

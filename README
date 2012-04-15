@@ -17,8 +17,6 @@ And do some basic commands:
 > db.things.findOne()
 > db.things.insert({a:1, b:2})
 
-getLastError is not yet supported.
-
 Buckets in the Riak store will be named like "collection.things" - the prefix is thus the name of the database you connect from the Mongo shell to.
 
 No auth, SSL and no IPv6 are considered yet - the implementiation is growing.

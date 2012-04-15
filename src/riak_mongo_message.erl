@@ -2,6 +2,7 @@
 %% This file is part of riak_mongo
 %%
 %% Copyright (c) 2012 by Pavlo Baron (pb at pbit dot org)
+%% Copyright (c) 2012 by Trifork
 %%
 %% Licensed under the Apache License, Version 2.0 (the "License");
 %% you may not use this file except in compliance with the License.
@@ -23,13 +24,43 @@
 
 -module(riak_mongo_message).
 
--export([process_message/2]).
+-export([process_messages/2]).
 
 -include ("riak_mongo_protocol.hrl").
--include_lib("riak_mongo_state.hrl").
+-include("riak_mongo_state.hrl").
+-include_lib("bson/include/bson_binary.hrl").
 
 -define(CMD,<<"$cmd">>).
 -define(ADM,<<"admin">>).
+
+%%
+%% loop over messages
+%%
+process_messages([], State) ->
+    State;
+process_messages([Message|Rest], State) ->
+    error_logger:info_msg("processing ~p~n", [Message]),
+    case process_message(Message, State) of
+        {noreply, OutState} ->
+            ok;
+
+        {reply, Reply, #worker_state{sock=Sock}=State2} ->
+            MessageID = element(2, Message),
+            ReplyMessage = Reply#mongo_reply{ request_id = State2#worker_state.request_id,
+                                              reply_to = MessageID },
+            OutState = State2#worker_state{ request_id = (State2#worker_state.request_id+1) },
+
+            error_logger:info_msg("replying ~p~n", [ReplyMessage]),
+
+            {ok, Packet} = riak_mongo_protocol:encode_packet(ReplyMessage),
+            Size = byte_size(Packet),
+            gen_tcp:send(Sock, <<?put_int32(Size+4), Packet/binary>>)
+    end,
+
+    process_messages(Rest, OutState);
+process_messages(A1,A2) ->
+    error_logger:info_msg("BAD ~p,~p~n", [A1,A2]),
+    exit({badarg,A1,A2}).
 
 process_message(#mongo_query{ db=DataBase, coll=?CMD,
                               selector=Selector}, State) ->
@@ -44,35 +75,25 @@ process_message(#mongo_query{ db=DataBase, coll=?CMD,
 
 process_message(#mongo_query{}=Message, State) ->
 
-    Result = riak_mongo_store:find(Message),
+    Result = riak_mongo_riak:find(Message),
     {reply, #mongo_reply{ documents=Result, queryerror=false }, State};
 
 process_message(#mongo_insert{}=Insert, State) ->
-    State2 = riak_mongo_store:insert(Insert, State),
+    State2 = riak_mongo_riak:insert(Insert, State),
     {noreply, State2};
 
 process_message(#mongo_delete{}=Delete, State) ->
-    State2 = riak_mongo_store:delete(Delete, State),
+    State2 = riak_mongo_riak:delete(Delete, State),
     {noreply, State2};
-
-process_message(#mongo_insert{dbcoll=DbCol, documents=Documents}, State) ->
-    process_insert(DbCol, Documents),
-    {noreply, State};
 
 process_message(Message, State) ->
     error_logger:info_msg("unhandled message: ~p~n", [Message]),
     {noreply, State}.
 
 %% internals
-you(#state{peer=Peer}) ->
-    {ok, {{A, B, C, D}, P}} = Peer, %IPv6???
+you(#worker_state{sock=Sock}) ->
+    {ok, {{A, B, C, D}, P}} = inet:peername(Sock), %IPv6???
     io_lib:format("~p.~p.~p.~p:~p", [A, B, C, D, P]).
-
-process_insert(_, []) ->
-    ok;
-process_insert(DbCol, [Document|L]) ->
-    riak_mongo_riak:insert(DbCol, Document),
-    process_insert(DbCol, L).
 
 db_command(?ADM, <<"whatsmyuri">>, _Options, State) ->
     {ok, [{you, {utf8, you(State)}}, {ok, 1}], State};
@@ -82,11 +103,11 @@ db_command(?ADM, <<"replSetGetStatus">>, _Options, State) ->
     {ok, [{ok, false}], State};
 
 db_command(_DataBase, <<"getlasterror">>, _Options, State) ->
-    case State#state.lastError of
+    case State#worker_state.lastError of
         [] ->
-            {ok, [{ok,true}], State#state{lastError=[]}};
+            {ok, [{ok,true}], State#worker_state{lastError=[]}};
         MSG ->
-            {ok, [{err, io:format("~p", MSG)}], State#state{lastError=[]}}
+            {ok, [{err, io:format("~p", MSG)}], State#worker_state{lastError=[]}}
     end;
 
 db_command(DataBase, Command, _Options, State) ->

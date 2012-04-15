@@ -22,68 +22,46 @@
 
 -module(riak_mongo_worker).
 
--export([start_link/2, handle_info/2]).
+-export([start_link/2, handle_info/2, init/1]).
 
 -behavior(gen_server).
 
 -include("riak_mongo_protocol.hrl").
 -include("riak_mongo_state.hrl").
--include_lib("bson/include/bson_binary.hrl").
+-include("riak_mongo_sock.hrl").
 
 start_link(Sock, OldOwner) ->
-    gen_server:start_link(?MODULE, [Sock, OldOwner]).
+    gen_server:start_link(?MODULE, [Sock, OldOwner], []).
 
-init(Sock, OldOwner) ->
-    inet:setopts(Sock, [{active, once}]),
-    OldOwner ! {controlling_process, self()},
-    {ok, #worker_state{sock=Sock, peer=inet:peername(Sock)}}.
+init([Sock, OldOwner]) ->
+    riak_mongo_sock:change_control(Sock, OldOwner, self()),
+    InitBin = <<>>,
+    {ok, #worker_state{sock=Sock, rest=InitBin}}.
+
+handle_info({tcp, Sock, Data}, State) ->
+    error_logger:info_msg("Starting to proceess message: ~p, ~p, ~p~n", [Sock, Data, State#worker_state.rest]),
+
+    UnprocessedData = State#worker_state.rest,
+    {Messages, Rest} = riak_mongo_protocol:decode_wire(<<UnprocessedData/binary, Data/binary>>),
+    State2 = riak_mongo_message:process_messages(Messages, State),
+    inet:setopts(Sock, ?SOCK_OPTS),
+    State3 = State2#worker_state{rest=Rest},
+    {noreply, State3};
+
+handle_info({tcp_closed, _Sock}, _) -> {reply, ok};
+
+handle_info({controlling_process, Sock, Pid}, State) ->
+    error_logger:info_msg("Giving away control (worker): ~p, ~p~n", [Sock, Pid]),
+
+    riak_mongo_sock:give_control(Sock, Pid),
+    {noreply, State};
+
+handle_info({control, Sock}, State) ->
+    error_logger:info_msg("Having control: ~p~n", [Sock]),
+
+    inet:setopts(Sock, ?SOCK_OPTS),
+    {noreply, State};
 
 handle_info(Msg, State) ->
-    case Msg of
-        {tcp, Sock, Data} ->
-	    UnprocessedData = State#state.rest,
-            {Messages, Rest} = riak_mongo_protocol:decode_wire(<<UnprocessedData/binary, Data/binary>>),
-            State2 = process_messages(Messages, State),
-            inet:setopts(Sock, [{active, once}]),
-	    State3 = State2#worker_state{rest=Rest},
-            {reply, State3};
-
-        {tcp_closed, Sock} ->
-            {reply, ok};
-
-        Msg ->
-            error_logger:info_msg("unknown message in worker callback: ~p~n", [Msg]),
-            {noreply, State}
-
-        %% timeout?
-    end.
-
-%%
-%% loop over messages
-%%
-process_messages([], State) ->
-    State;
-process_messages([Message|Rest], State) ->
-    error_logger:info_msg("processing ~p~n", [Message]),
-    case riak_mongo_message:process_message(Message, State) of
-        {noreply, OutState} ->
-            ok;
-
-        {reply, Reply, #worker_state{sock=Sock}=State2} ->
-            MessageID = element(2, Message),
-            ReplyMessage = Reply#mongo_reply{ request_id = State2#state.request_id,
-                                              reply_to = MessageID },
-            OutState = State2#worker_state{ request_id = (State2#state.request_id+1) },
-
-            error_logger:info_msg("replying ~p~n", [ReplyMessage]),
-
-            {ok, Packet} = riak_mongo_protocol:encode_packet(ReplyMessage),
-            Size = byte_size(Packet),
-            gen_tcp:send(Sock, <<?put_int32(Size+4), Packet/binary>>)
-    end,
-
-    process_messages(Rest, OutState);
-process_messages(A1,A2) ->
-    error_logger:info_msg("BAD ~p,~p~n", [A1,A2]),
-    exit({badarg,A1,A2}).
-
+    error_logger:info_msg("unknown message in worker callback: ~p~n", [Msg]),
+    {noreply, State}.

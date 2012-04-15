@@ -20,6 +20,6 @@
 %% @doc Global state records
 %% @copyright 2012 Pavlo Baron
 
--record(worker_state, {sock, request_id=0, peer, rest, lastError=[]}).
+-record(worker_state, {sock, request_id=0, rest, lastError=[]}).
 
--record(server_state, {old_owner :: pid(), sock}).
+-record(server_state, {owner :: pid(), sock}).

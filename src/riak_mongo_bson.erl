@@ -30,12 +30,12 @@
 %%
 %% @copyright 2012 Trifork
 
--module(riak_mongo_bson2).
+-module(riak_mongo_bson).
 
 -export([get_document/1, get_raw_document/1, get_cstring/1, value_type/1]).
 -export([encode_document/1]).
 
--include("riak_mongo_bson2.hrl").
+-include("riak_mongo_bson.hrl").
 
 -define(DOUBLE_TAG,    16#01).
 -define(STRING_TAG,    16#02).
