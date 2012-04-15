@@ -30,11 +30,13 @@
 -include("riak_mongo_state.hrl").
 -include("riak_mongo_sock.hrl").
 
-start_link(Sock, OldOwner) ->
-    gen_server:start_link(?MODULE, [Sock, OldOwner], []).
+start_link(Sock, Owner) ->
+    gen_server:start_link(?MODULE, [Sock, Owner], []).
 
-init([Sock, OldOwner]) ->
-    riak_mongo_sock:change_control(Sock, OldOwner, self()),
+init([Sock, Owner]) ->
+    error_logger:info_msg("Requested to hand over control on sock ~p, ~p~n", [Sock, Owner]),
+
+    Owner ! ?CONTROLLING_PROCESS_MSG(Sock, self()),
     InitBin = <<>>,
     {ok, #worker_state{sock=Sock, rest=InitBin}}.
 
@@ -50,16 +52,10 @@ handle_info({tcp, Sock, Data}, State) ->
 
 handle_info({tcp_closed, _Sock}, _) -> {reply, ok};
 
-handle_info({controlling_process, Sock, Pid}, State) ->
-    error_logger:info_msg("Giving away control (worker): ~p, ~p~n", [Sock, Pid]),
+handle_info(?CONTROL_MSG, State) ->
+    error_logger:info_msg("Having control: ~p~n", [State#worker_state.sock]),
 
-    riak_mongo_sock:give_control(Sock, Pid),
-    {noreply, State};
-
-handle_info({control, Sock}, State) ->
-    error_logger:info_msg("Having control: ~p~n", [Sock]),
-
-    inet:setopts(Sock, ?SOCK_OPTS),
+    inet:setopts(State#worker_state.sock, ?SOCK_OPTS),
     {noreply, State};
 
 handle_info(Msg, State) ->

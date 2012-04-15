@@ -34,22 +34,23 @@ start_link(IpAddr, Port) ->
     gen_nb_server:start_link(?MODULE, IpAddr, Port, []).
 
 init(_Args) ->
-    {ok, #server_state{owner=self()}}.
+    {ok, ok}.
 
 new_connection(Sock, State) ->
-    Owner = State#server_state.owner,
+    error_logger:info_msg("New connection: ~p, ~p~n", [self(), Sock]),
 
-    error_logger:info_msg("New connection: ~p, ~p, ~p~n", [Owner, Sock, State]),
-
-    NewOwner = riak_mongo_worker_sup:new_worker(Sock, Owner),
-    NewState = #server_state{owner=NewOwner, sock=Sock},
-    {ok, NewState}.
+    riak_mongo_worker_sup:new_worker(Sock, self()),
+    {ok, State}.
 
 sock_opts() -> ?SOCK_OPTS.
 
-handle_info({controlling_process, Sock, Pid}, State) ->
-    riak_mongo_sock:give_control(Sock, Pid),
+handle_info(?CONTROLLING_PROCESS_MSG(Sock, NewOwner), State) ->
+    error_logger:info_msg("Handing over control from to ~p on sock ~p~n", [NewOwner, Sock]),
+
+    gen_tcp:controlling_process(Sock, NewOwner),
+    NewOwner ! ?CONTROL_MSG,
     {noreply, State};
+
 handle_info(Msg, State) ->
     error_logger:info_msg("unknown message in worker callback: ~p~n", [Msg]),
     {noreply, State}.

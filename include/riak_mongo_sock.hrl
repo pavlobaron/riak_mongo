@@ -21,3 +21,6 @@
 %% @copyright 2012 Pavlo Baron
 
 -define(SOCK_OPTS, [binary, {active, once}, {packet, 0}, {reuseaddr, true}]).
+
+-define(CONTROL_MSG, {control}).
+-define(CONTROLLING_PROCESS_MSG(S, O), {controlling_process, S, O}).

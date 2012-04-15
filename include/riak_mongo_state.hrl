@@ -17,9 +17,7 @@
 %%
 
 %% @author Pavlo Baron <pb at pbit dot org>
-%% @doc Global state records
+%% @doc State records
 %% @copyright 2012 Pavlo Baron
 
 -record(worker_state, {sock, request_id=0, rest, lastError=[]}).
-
--record(server_state, {owner :: pid(), sock}).

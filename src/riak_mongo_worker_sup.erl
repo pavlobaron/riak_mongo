@@ -35,4 +35,4 @@ init(_Args) ->
     {ok, {{simple_one_for_one, 0, 1}, [WorkerSpec]}}.
 
 new_worker(Sock, Owner) ->
-    supervisor:start_child(riak_mongo_worker_sup, [Sock, Owner]).
+    supervisor:start_child(?MODULE, [Sock, Owner]).
