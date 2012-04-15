@@ -45,7 +45,7 @@ new_connection(Sock, State) ->
 sock_opts() -> ?SOCK_OPTS.
 
 handle_info(?CONTROLLING_PROCESS_MSG(Sock, NewOwner), State) ->
-    error_logger:info_msg("Handing over control from to ~p on sock ~p~n", [NewOwner, Sock]),
+    error_logger:info_msg("Handing over control to ~p on sock ~p~n", [NewOwner, Sock]),
 
     gen_tcp:controlling_process(Sock, NewOwner),
     NewOwner ! ?CONTROL_MSG,

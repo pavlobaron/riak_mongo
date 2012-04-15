@@ -66,17 +66,33 @@ is_true(0.0) -> false;
 is_true(_) -> true.
 
 
-find(#mongo_query{dbcoll=Collection, selector=Selector, projector=Projection }) ->
+find(#mongo_query{dbcoll=Bucket, selector=Selector, projector=Projection, batchsize=BatchSize }) ->
 
     Project = compute_projection_fun(Projection),
     CompiledQuery = riak_mongo_query:compile(Selector),
 
+    error_logger:info_msg("Find executed ~p, ~p, ~p~n", [Projection, CompiledQuery, Project]),
+    
     {ok, Documents}
-        = riak_kv_mrc_pipe:mapred(Collection,
+        = riak_kv_mrc_pipe:mapred(Bucket,
                                   [{map, {qfun, fun map_query/3}, {CompiledQuery, Project}, true}]),
+    
+    % dig deeper here to find out if it's possible to limit the
+    % number of returned docs during mapred, not afterwards
+    case BatchSize /= 0 of
+	true ->
+	    error_logger:info_msg("Limiting result set to ~p docs~n", [BatchSize]),
 
-    Documents.
+	    limit_docs(Documents, abs(BatchSize), 0);
+	false -> Documents
+    end.
 
+limit_docs(_, BatchSize, N) when N =:= BatchSize ->
+    [];
+limit_docs(_, [], _) ->
+    [];
+limit_docs([Document|T], BatchSize, N) ->
+    [Document|limit_docs(T, BatchSize, N + 1)].
 
 map_query(Object, _KeyData, {CompiledQuery, Project}) ->
     Acc = [],
