@@ -53,19 +53,6 @@ insert(#mongo_insert{dbcoll=Bucket, documents=Docs, continueonerror=ContinueOnEr
 
     State#worker_state{ lastError=Errors }.
 
-
-%%
-%% we'll need this lots of places, it should probably be
-%% in a separate "js emulation" module
-%%
-is_true(undefined) -> false;
-is_true(null) -> false;
-is_true(false) -> false;
-is_true(0) -> false;
-is_true(0.0) -> false;
-is_true(_) -> true.
-
-
 find(#mongo_query{dbcoll=Bucket, selector=Selector, projector=Projection, batchsize=BatchSize }) ->
 
     Project = compute_projection_fun(Projection),
@@ -87,6 +74,48 @@ find(#mongo_query{dbcoll=Bucket, selector=Selector, projector=Projection, batchs
 	    limit_docs(Documents, abs(BatchSize), 0);
 	false -> Documents
     end.
+
+delete(#mongo_delete{dbcoll=Bucket, selector=Selector, singleremove=SingleRemove}, State) ->
+    Project = compute_projection_fun([]),
+    CompiledQuery = riak_mongo_query:compile(Selector),
+
+    error_logger:info_msg("Delete executed ~p, ~p~n", [CompiledQuery, Project]),
+    
+    % TODO: simple key-based read shouldn't go through mapred for speed
+    {ok, Documents}
+        = riak_kv_mrc_pipe:mapred(Bucket,
+                                  [{map, {qfun, fun map_query/3}, {CompiledQuery, Project}, true}]),
+    
+    % TODO: dig deeper here to delete the objects directly
+    % from in the map phase, one or more
+    Docs = case SingleRemove of
+	true ->
+	    error_logger:info_msg("Deleting only one doc~n", []),
+
+	    [lists:nth(1, Documents)];
+	false -> Documents
+    end,
+
+    {ok, C} = riak:local_client(),
+
+    Errors =
+        lists:foldl(fun({struct, [{_, BSON_ID}|_]}, Err) ->
+                            ID = bson_to_riak_key(BSON_ID),
+
+			    error_logger:info_msg("deleting ~p~n", [ID]),
+
+                            case C:delete(Bucket, ID) of
+                                ok -> Err;
+                                Error -> [Error|Err]
+                            end
+                    end,
+                    [],
+                    Docs),
+
+    State#worker_state{ lastError=Errors }.
+
+
+%% internals
 
 limit_docs(_, BatchSize, N) when N =:= BatchSize ->
     [];
@@ -171,45 +200,6 @@ get_projection_keys([{struct, KVs}|Rest], Acc) ->
 
     get_projection_keys(Rest, lists:umerge(Keys,Acc)).
 
-delete(#mongo_delete{dbcoll=Bucket, selector=Selector, singleremove=SingleRemove}, State) ->
-    Project = compute_projection_fun([]),
-    CompiledQuery = riak_mongo_query:compile(Selector),
-
-    error_logger:info_msg("Delete executed ~p, ~p~n", [CompiledQuery, Project]),
-    
-    % TODO: simple key-based read shouldn't go through mapred for speed
-    {ok, Documents}
-        = riak_kv_mrc_pipe:mapred(Bucket,
-                                  [{map, {qfun, fun map_query/3}, {CompiledQuery, Project}, true}]),
-    
-    % TODO: dig deeper here to delete the objects directly
-    % from in the map phase, one or more
-    Docs = case SingleRemove of
-	true ->
-	    error_logger:info_msg("Deleting only one doc~n", []),
-
-	    [lists:nth(1, Documents)];
-	false -> Documents
-    end,
-
-    {ok, C} = riak:local_client(),
-
-    Errors =
-        lists:foldl(fun({struct, [{_, BSON_ID}|_]}, Err) ->
-                            ID = bson_to_riak_key(BSON_ID),
-
-			    error_logger:info_msg("deleting ~p~n", [ID]),
-
-                            case C:delete(Bucket, ID) of
-                                ok -> Err;
-                                Error -> [Error|Err]
-                            end
-                    end,
-                    [],
-                    Docs),
-
-    State#worker_state{ lastError=Errors }.
-
 bson_to_riak_key({objectid, BIN}) ->
     iolist_to_binary("OID:" ++ hexencode(BIN)).
 
@@ -221,3 +211,14 @@ hex(CH) when CH < 16 ->
     [ $0, integer_to_list(CH, 16) ];
 hex(CH) ->
     integer_to_list(CH, 16).
+
+%%
+%% we'll need this lots of places, it should probably be
+%% in a separate "js emulation" module
+%%
+is_true(undefined) -> false;
+is_true(null) -> false;
+is_true(false) -> false;
+is_true(0) -> false;
+is_true(0.0) -> false;
+is_true(_) -> true.
