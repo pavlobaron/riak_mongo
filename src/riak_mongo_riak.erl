@@ -191,16 +191,11 @@ delete(#mongo_delete{dbcoll=Bucket, selector=Selector, singleremove=SingleRemove
 	    [lists:nth(1, Documents)];
 	false -> Documents
     end,
-    
-
-    error_logger:info_msg("!!! ~p~n", [Documents]),
-    
-
 
     {ok, C} = riak:local_client(),
 
     Errors =
-        lists:foldl(fun({struct, [{_, BSON_ID}, _]}, Err) ->
+        lists:foldl(fun({struct, [{_, BSON_ID}|_]}, Err) ->
                             ID = bson_to_riak_key(BSON_ID),
 
 			    error_logger:info_msg("deleting ~p~n", [ID]),
