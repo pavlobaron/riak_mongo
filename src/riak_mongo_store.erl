@@ -162,7 +162,13 @@ delete(Delete) ->
 
 
 bson_to_riak_key({objectid, BIN}) ->
-    iolist_to_binary("OID:" ++ hexencode(BIN)).
+    iolist_to_binary("OID:" ++ hexencode(BIN));
+bson_to_riak_key({binary, BIN}) ->
+    iolist_to_binary("BIN:" ++ hexencode(BIN)).
+bson_to_riak_key({uuid, BIN}) ->
+    iolist_to_binary("UUID:" ++ hexencode(BIN)).
+bson_to_riak_key({md5, BIN}) ->
+    iolist_to_binary("MD5:" ++ hexencode(BIN)).
 
 hexencode(<<>>) -> [];
 hexencode(<<CH, Rest/binary>>) ->
