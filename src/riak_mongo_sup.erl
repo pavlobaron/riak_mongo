@@ -16,7 +16,7 @@
 %% limitations under the License.
 %%
 
-%% @author Pavlo Baron <pb at pbit dot org> (borrowed from Kevin Smith)
+%% @author Pavlo Baron <pb at pbit dot org>
 %% @doc This is the mail supervisor of riak_mongo
 %% @copyright 2012 Pavlo Baron
 
@@ -32,4 +32,7 @@ init(Args) ->
     ServerSpec = {server,
                   {riak_mongo_server, start_link, Args},
                   transient, 2000, worker, [riak_mongo_server]},
-    {ok, {{one_for_one, 2, 10}, [ServerSpec]}}.
+    WorkerSupervisorSpec = {worker_sup,
+                  {riak_mongo_worker_sup, start_link, []},
+                  transient, 2000, worker, [riak_mongo_worker_sup]},
+    {ok, {{one_for_one, 2, 10}, [ServerSpec, WorkerSupervisorSpec]}}.

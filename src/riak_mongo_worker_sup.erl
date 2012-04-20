@@ -17,7 +17,22 @@
 %%
 
 %% @author Pavlo Baron <pb at pbit dot org>
-%% @doc State records
+%% @doc This is the worker supervisor
 %% @copyright 2012 Pavlo Baron
 
--record(worker_state, {sock, request_id=0, rest, lastError=[]}).
+-module(riak_mongo_worker_sup).
+-behaviour(supervisor).
+
+-export([start_link/0, init/1, new_worker/2]).
+
+start_link() ->
+    supervisor:start_link({local, ?MODULE}, ?MODULE, []).
+
+init(_Args) ->
+    WorkerSpec = {worker,
+                  {riak_mongo_worker, start_link, []},
+                  temporary, brutal_kill, worker, [riak_mongo_worker]},
+    {ok, {{simple_one_for_one, 0, 1}, [WorkerSpec]}}.
+
+new_worker(Sock, Owner) ->
+    supervisor:start_child(?MODULE, [Sock, Owner]).

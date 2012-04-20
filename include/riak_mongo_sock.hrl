@@ -17,7 +17,10 @@
 %%
 
 %% @author Pavlo Baron <pb at pbit dot org>
-%% @doc State records
+%% @doc Some reusable socket stuff
 %% @copyright 2012 Pavlo Baron
 
--record(worker_state, {sock, request_id=0, rest, lastError=[]}).
+-define(SOCK_OPTS, [binary, {active, once}, {packet, 0}, {reuseaddr, true}]).
+
+-define(CONTROL_MSG, {control}).
+-define(CONTROLLING_PROCESS_MSG(S, O), {controlling_process, S, O}).

@@ -22,13 +22,13 @@
 
 -module(riak_mongo_server).
 
--include_lib ("bson/include/bson_binary.hrl").
--include ("riak_mongo_protocol.hrl").
--include_lib("riak_mongo_state.hrl").
-
--export([start_link/2, handle_info/2, new_connection/2, init/1, sock_opts/0]).
+-export([start_link/2, init/1, handle_info/2]).
+-export([new_connection/2, sock_opts/0]).
 
 -behavior(gen_nb_server).
+
+-include("riak_mongo_state.hrl").
+-include("riak_mongo_sock.hrl").
 
 start_link(IpAddr, Port) ->
     gen_nb_server:start_link(?MODULE, IpAddr, Port, []).
@@ -36,71 +36,21 @@ start_link(IpAddr, Port) ->
 init(_Args) ->
     {ok, ok}.
 
-handle_info(_Msg, State) ->
-    {noreply, State}.
-
 new_connection(Sock, State) ->
-    Me = self(),
-    P = spawn(fun() -> worker(Me) end),
-    gen_tcp:controlling_process(Sock, P),
-    P ! {set_socket, Sock},
+    error_logger:info_msg("New connection: ~p, ~p~n", [self(), Sock]),
+
+    riak_mongo_worker_sup:new_worker(Sock, self()),
     {ok, State}.
 
-sock_opts() ->
-    [binary, {active, once}, {packet, 0}, {reuseaddr, true}].
+sock_opts() -> ?SOCK_OPTS.
 
-%% this should really be a process under supervision
+handle_info(?CONTROLLING_PROCESS_MSG(Sock, NewOwner), State) ->
+    error_logger:info_msg("Handing over control to ~p on sock ~p~n", [NewOwner, Sock]),
 
-worker(Owner) ->
-    receive {set_socket, Sock} -> ok end,
-    inet:setopts(Sock, [{active, once}]),
-    worker_loop(#state{ owner=Owner, sock=Sock, peer=inet:peername(Sock) }, <<>>).
+    gen_tcp:controlling_process(Sock, NewOwner),
+    NewOwner ! ?CONTROL_MSG,
+    {noreply, State};
 
-worker_loop(#state{sock=Sock}=State, UnprocessedData) ->
-    receive
-        {tcp, Sock, Data} ->
-            {Messages, Rest} = riak_mongo_protocol:decode_wire(<<UnprocessedData/binary, Data/binary>>),
-            State2 = process_messages(Messages, State),
-            inet:setopts(Sock, [{active, once}]),
-            worker_loop(State2, Rest);
-
-        {tcp_closed, Sock} ->
-            ok;
-
-        Msg ->
-            error_logger:info_msg("unknown message in worker loop: ~p~n", [Msg]),
-            exit(bad_msg)
-
-        %% timeout?
-    end.
-
-
-%%
-%% loop over messages
-%%
-process_messages([], State) ->
-    State;
-process_messages([Message|Rest], State) ->
-    error_logger:info_msg("processing ~p~n", [Message]),
-    case riak_mongo_message:process_message(Message, State) of
-        {noreply, OutState} ->
-            ok;
-
-        {reply, Reply, #state{ sock=Sock }=State2} ->
-            MessageID = element(2, Message),
-            ReplyMessage = Reply#mongo_reply{ request_id = State2#state.request_id,
-                                              reply_to = MessageID },
-            OutState = State2#state{ request_id = (State2#state.request_id+1) },
-
-            error_logger:info_msg("replying ~p~n", [ReplyMessage]),
-
-            {ok, Packet} = riak_mongo_protocol:encode_packet(ReplyMessage),
-            Size = byte_size(Packet),
-            gen_tcp:send(Sock, <<?put_int32(Size+4), Packet/binary>>)
-    end,
-
-    process_messages(Rest, OutState);
-process_messages(A1,A2) ->
-    error_logger:info_msg("BAD ~p,~p~n", [A1,A2]),
-    exit({badarg,A1,A2}).
-
+handle_info(Msg, State) ->
+    error_logger:info_msg("unknown message in worker callback: ~p~n", [Msg]),
+    {noreply, State}.

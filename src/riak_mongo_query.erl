@@ -24,7 +24,7 @@
 
 -module(riak_mongo_query).
 
--include("riak_mongo_bson2.hrl").
+-include("riak_mongo_bson.hrl").
 -include_lib("eunit/include/eunit.hrl").
 
 -export([matches/2, compile/1]).
@@ -94,7 +94,7 @@ elem_match({_Key,Value}, '$size', QueryValue) when length(Value) == QueryValue -
     true;
 
 elem_match({_Key,Value}, '$type', QueryValue) ->
-    riak_mongo_bson2:value_type(Value) =:= QueryValue;
+    riak_mongo_bson:value_type(Value) =:= QueryValue;
 
 elem_match(_KeyValue, '$exists', Bool) when is_boolean(Bool) ->
     Bool;
