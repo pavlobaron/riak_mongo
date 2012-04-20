@@ -28,7 +28,7 @@
 -include("riak_mongo_protocol.hrl").
 -include("riak_mongo_state.hrl").
 
--export([insert/2, find/1, delete/1]).
+-export([insert/2, find/1, delete/2]).
 
 insert(#mongo_insert{dbcoll=Bucket, documents=Docs, continueonerror=ContinueOnError}, State) ->
 
@@ -73,11 +73,12 @@ find(#mongo_query{dbcoll=Bucket, selector=Selector, projector=Projection, batchs
 
     error_logger:info_msg("Find executed ~p, ~p, ~p~n", [Projection, CompiledQuery, Project]),
     
+    % TODO: simple key-based read shouldn't go through mapred for speed
     {ok, Documents}
         = riak_kv_mrc_pipe:mapred(Bucket,
                                   [{map, {qfun, fun map_query/3}, {CompiledQuery, Project}, true}]),
     
-    % dig deeper here to find out if it's possible to limit the
+    % TODO: dig deeper here to find out if it's possible to limit the
     % number of returned docs during mapred, not afterwards
     case BatchSize /= 0 of
 	true ->
@@ -89,7 +90,7 @@ find(#mongo_query{dbcoll=Bucket, selector=Selector, projector=Projection, batchs
 
 limit_docs(_, BatchSize, N) when N =:= BatchSize ->
     [];
-limit_docs(_, [], _) ->
+limit_docs([], _, _) ->
     [];
 limit_docs([Document|T], BatchSize, N) ->
     [Document|limit_docs(T, BatchSize, N + 1)].
@@ -170,12 +171,49 @@ get_projection_keys([{struct, KVs}|Rest], Acc) ->
 
     get_projection_keys(Rest, lists:umerge(Keys,Acc)).
 
+delete(#mongo_delete{dbcoll=Bucket, selector=Selector, singleremove=SingleRemove}, State) ->
+    Project = compute_projection_fun([]),
+    CompiledQuery = riak_mongo_query:compile(Selector),
+
+    error_logger:info_msg("Delete executed ~p, ~p~n", [CompiledQuery, Project]),
+    
+    % TODO: simple key-based read shouldn't go through mapred for speed
+    {ok, Documents}
+        = riak_kv_mrc_pipe:mapred(Bucket,
+                                  [{map, {qfun, fun map_query/3}, {CompiledQuery, Project}, true}]),
+    
+    % TODO: dig deeper here to delete the objects directly
+    % from in the map phase, one or more
+    Docs = case SingleRemove of
+	true ->
+	    error_logger:info_msg("Deleting only one doc~n", []),
+
+	    [lists:nth(1, Documents)];
+	false -> Documents
+    end,
+    
+
+    error_logger:info_msg("!!! ~p~n", [Documents]),
+    
 
 
-delete(Delete) ->
-    error_logger:error_msg("delete not implemented: ~p~n", Delete),
-    ok.
+    {ok, C} = riak:local_client(),
 
+    Errors =
+        lists:foldl(fun({struct, [{_, BSON_ID}, _]}, Err) ->
+                            ID = bson_to_riak_key(BSON_ID),
+
+			    error_logger:info_msg("deleting ~p~n", [ID]),
+
+                            case C:delete(Bucket, ID) of
+                                ok -> Err;
+                                Error -> [Error|Err]
+                            end
+                    end,
+                    [],
+                    Docs),
+
+    State#worker_state{ lastError=Errors }.
 
 bson_to_riak_key({objectid, BIN}) ->
     iolist_to_binary("OID:" ++ hexencode(BIN)).

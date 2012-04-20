@@ -8,14 +8,24 @@ Run it in a Riak node instance using:
 
 > riak_mongo:start(temporary, "127.0.0.1", 32323).
 
+or even:
+
+> application:start(riak_mongo).
+
+which will use same default address and port settings.
+
 We use the low level riak_kv Erlang API to talk to the local store. You can connect to it from the Mongo shell (in this case, on the same machine) using:
 
 $ mongo --verbose -port 32323 collection
 
 And do some basic commands:
 
-> db.things.findOne()
 > db.things.insert({a:1, b:2})
+> db.things.findOne()
+> db.things.find({a:1})
+> db.things.find({a:1}, {b:1})
+> db.things.remove({a:1})
+> db.things.remove()
 
 Buckets in the Riak store will be named like "collection.things" - the prefix is thus the name of the database you connect from the Mongo shell to.
 

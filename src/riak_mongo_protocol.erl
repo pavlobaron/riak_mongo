@@ -91,9 +91,8 @@ decode_packet(<< ?HDR(_, ?UpdateOpcode), 0:32, Rest/binary>> ) ->
 
 decode_packet(<< ?HDR(_, ?DeleteOpcode), 0:32, Rest/binary >>) ->
     {DBColl, Rest1} = riak_mongo_bson:get_cstring(Rest),
-    <<?get_bits32(0,0,0,0,0,0,0,SingleRemove), Rest2>> = Rest1,
+    <<?get_bits32(0,0,0,0,0,0,0,SingleRemove), Rest2/binary>> = Rest1,
     {Selector, <<>>} = riak_mongo_bson:get_document(Rest2),
-
     {ok, #mongo_delete{ dbcoll=DBColl,
                         request_id=RequestId,
                         selector=Selector,
