@@ -22,7 +22,7 @@
 
 -module(riak_mongo).
 -behaviour(application).
--export([start/3, start/2, stop/1]).
+-export([start/3, start/2, start/0, stop/1]).
 
 -define(DEFAULT_ADDR, "127.0.0.1").
 -define(DEFAULT_PORT, 32323).
@@ -37,3 +37,6 @@ start(_Type, []) ->
 
 stop(_State) ->
     ok.
+
+start() ->
+    application:start(riak_mongo).
