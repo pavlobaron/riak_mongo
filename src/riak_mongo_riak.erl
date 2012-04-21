@@ -56,63 +56,111 @@ insert(#mongo_insert{dbcoll=Bucket, documents=Docs, continueonerror=ContinueOnEr
 find(#mongo_query{dbcoll=Bucket, selector=Selector, projector=Projection, batchsize=BatchSize }) ->
 
     Project = compute_projection_fun(Projection),
-    CompiledQuery = riak_mongo_query:compile(Selector),
 
-    error_logger:info_msg("Find executed ~p, ~p, ~p~n", [Projection, CompiledQuery, Project]),
-    
-    % TODO: simple key-based read shouldn't go through mapred for speed
-    {ok, Documents}
-        = riak_kv_mrc_pipe:mapred(Bucket,
-                                  [{map, {qfun, fun map_query/3}, {CompiledQuery, Project}, true}]),
-    
-    % TODO: dig deeper here to find out if it's possible to limit the
-    % number of returned docs during mapred, not afterwards
-    case BatchSize /= 0 of
-	true ->
-	    error_logger:info_msg("Limiting result set to ~p docs~n", [BatchSize]),
+    case id_document(Selector) of
 
-	    limit_docs(Documents, abs(BatchSize), 0);
-	false -> Documents
+        {ok, RiakKey} ->
+            {ok, C} = riak:local_client(),
+            case C:get(Bucket, RiakKey) of
+                {ok, RiakObject} ->
+                    case riak_to_bson_object(RiakObject) of
+                        {ok, Document} -> [Project(Document)];
+                        _ -> []
+                    end;
+                _ -> []
+            end;
+
+        false ->
+
+            CompiledQuery = riak_mongo_query:compile(Selector),
+
+            error_logger:info_msg("Find executed ~p, ~p, ~p~n", [Projection, CompiledQuery, Project]),
+
+            %% TODO: simple key-based read shouldn't go through mapred for speed
+            {ok, Documents}
+                = riak_kv_mrc_pipe:mapred(Bucket,
+                                          [{map, {qfun, fun map_query/3}, {CompiledQuery, Project}, true}]),
+
+            %% TODO: dig deeper here to find out if it's possible to limit the
+            %% number of returned docs during mapred, not afterwards.
+            %% TODO2: Find a way to handle cursors ... the elements removed by "limit"
+            %% should be held by a cursor
+            case BatchSize /= 0 of
+                true ->
+                    error_logger:info_msg("Limiting result set to ~p docs~n", [BatchSize]),
+                    limit_docs(Documents, abs(BatchSize), 0);
+                false -> Documents
+            end
     end.
 
+
+id_document({struct, [{<<"_id">>, ID}]}) ->
+    case
+        case ID of
+            {objectid, _} -> true;
+            {binary, _} -> true;
+            {md5, _} -> true;
+            {uuid, _} -> true;
+            _ when is_binary(ID) -> true;
+            _ -> false
+        end
+    of
+        true -> {ok, bson_to_riak_key(ID)};
+        false -> false
+    end;
+id_document(_) ->
+    false.
+
 delete(#mongo_delete{dbcoll=Bucket, selector=Selector, singleremove=SingleRemove}, State) ->
-    Project = compute_projection_fun([]),
-    CompiledQuery = riak_mongo_query:compile(Selector),
 
-    error_logger:info_msg("Delete executed ~p, ~p~n", [CompiledQuery, Project]),
-    
-    % TODO: simple key-based read shouldn't go through mapred for speed
-    {ok, Documents}
-        = riak_kv_mrc_pipe:mapred(Bucket,
-                                  [{map, {qfun, fun map_query/3}, {CompiledQuery, Project}, true}]),
-    
-    % TODO: dig deeper here to delete the objects directly
-    % from in the map phase, one or more
-    Docs = case SingleRemove of
-	true ->
-	    error_logger:info_msg("Deleting only one doc~n", []),
+    case id_document(Selector) of
+        {ok, RiakKey} ->
+            {ok, C} = riak:local_client(),
+            case C:delete(Bucket, RiakKey) of
+                ok -> State;
+                Err -> State#worker_state{ lastError=Err }
+            end;
 
-	    [lists:nth(1, Documents)];
-	false -> Documents
-    end,
+        false when not SingleRemove ->
 
-    {ok, C} = riak:local_client(),
+            Project = fun({struct, Elms}) ->
+                              {<<"_id">>, ID} = lists:keyfind(<<"_id">>, 1, Elms),
+                              {ok, C} = riak:local_client(),
+                              case C:delete(Bucket, bson_to_riak_key(ID)) of
+                                  ok -> [];
+                                  Err -> [Err]
+                              end
+                      end,
 
-    Errors =
-        lists:foldl(fun({struct, [{_, BSON_ID}|_]}, Err) ->
-                            ID = bson_to_riak_key(BSON_ID),
+            CompiledQuery = riak_mongo_query:compile(Selector),
 
-			    error_logger:info_msg("deleting ~p~n", [ID]),
+            {ok, Errors}
+                = riak_kv_mrc_pipe:mapred(Bucket,
+                                          [{map, {qfun, fun map_query/3}, {CompiledQuery, Project}, true}]),
 
-                            case C:delete(Bucket, ID) of
-                                ok -> Err;
-                                Error -> [Error|Err]
-                            end
-                    end,
-                    [],
-                    Docs),
 
-    State#worker_state{ lastError=Errors }.
+            State#worker_state{ lastError=Errors };
+
+        false when SingleRemove ->
+
+            Project = fun(Doc) -> Doc end,
+            CompiledQuery = riak_mongo_query:compile(Selector),
+
+            case riak_kv_mrc_pipe:mapred(Bucket,
+                                         [{map, {qfun, fun map_query/3}, {CompiledQuery, Project}, true}])
+            of
+                {ok, []} ->
+                    State;
+
+                {ok, [{struct, Elms}|_]} ->
+                    {<<"_id">>, ID} = lists:keyfind(<<"_id">>, 1, Elms),
+                    {ok, C} = riak:local_client(),
+                    case C:delete(Bucket, bson_to_riak_key(ID)) of
+                        ok -> State;
+                        Err -> State#worker_state{ lastError=Err }
+                    end
+            end
+    end.
 
 
 %% internals
@@ -124,8 +172,7 @@ limit_docs([], _, _) ->
 limit_docs([Document|T], BatchSize, N) ->
     [Document|limit_docs(T, BatchSize, N + 1)].
 
-map_query(Object, _KeyData, {CompiledQuery, Project}) ->
-    Acc = [],
+riak_to_bson_object(Object) ->
     MD = riak_object:get_metadata(Object),
     case dict:find(<<"content-type">>, MD) of
         {ok, "application/bson"} ->
@@ -133,9 +180,9 @@ map_query(Object, _KeyData, {CompiledQuery, Project}) ->
 
             case catch riak_mongo_bson:get_document(BSON) of
                 {{struct, _}=Document, _} ->
-                    do_mongo_match(Document, CompiledQuery, Project, Acc);
+                    {ok, Document};
                 _ ->
-                    Acc
+                    none
             end;
 
         %% also query any JSON documents
@@ -144,11 +191,20 @@ map_query(Object, _KeyData, {CompiledQuery, Project}) ->
 
             case catch mochijson2:decode(JSON) of
                 {struct, _}=Document ->
-                    do_mongo_match(Document, CompiledQuery, Project, Acc);
+                    {ok, Document};
                 _ ->
-                    Acc
+                    none
             end;
 
+        _ ->
+            none
+    end.
+
+map_query(Object, _KeyData, {CompiledQuery, Project}) ->
+    Acc = [],
+    case riak_to_bson_object(Object) of
+        {ok, Document} ->
+            do_mongo_match(Document, CompiledQuery, Project, Acc);
         _ ->
             Acc
     end.
@@ -203,11 +259,13 @@ get_projection_keys([{struct, KVs}|Rest], Acc) ->
 bson_to_riak_key({objectid, BIN}) ->
     iolist_to_binary("OID:" ++ hexencode(BIN));
 bson_to_riak_key({binary, BIN}) ->
-    iolist_to_binary("BIN:" ++ hexencode(BIN)).
+    iolist_to_binary("BIN:" ++ hexencode(BIN));
 bson_to_riak_key({uuid, BIN}) ->
-    iolist_to_binary("UUID:" ++ hexencode(BIN)).
+    iolist_to_binary("UUID:" ++ hexencode(BIN));
 bson_to_riak_key({md5, BIN}) ->
-    iolist_to_binary("MD5:" ++ hexencode(BIN)).
+    iolist_to_binary("MD5:" ++ hexencode(BIN));
+bson_to_riak_key(BIN) when is_binary(BIN) ->
+    BIN.
 
 hexencode(<<>>) -> [];
 hexencode(<<CH, Rest/binary>>) ->
