@@ -51,6 +51,6 @@ All this is work in progress, at the present state only the most basic stuff wor
 - Pavlo Baron (pb@pbit.org)
 - Kresten Krab Thorup (krab@trifork.com)
 
-## Constribute!
+## Contribute!
 
 Feedback and helpers are welcome at any time.
