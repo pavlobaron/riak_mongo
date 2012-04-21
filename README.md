@@ -26,6 +26,10 @@ And do some basic commands:
     > db.things.find({a:1}, {b:1})
     > db.things.remove({a:1})
     > db.things.remove()
+	> db.things.insert({a:1})
+	> x = db.things.findOne()
+	> x.a = 2
+	> db.things.update({_id:x._id}, x, false)
 
 Buckets in the Riak store will be named like "collection.things" - the prefix is thus the name of the database you connect from the Mongo shell to.
 

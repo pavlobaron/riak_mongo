@@ -31,7 +31,7 @@
 
 -compile([{parse_transform, lager_transform}]).
 
--export([insert/2, find/2, getmore/2, delete/2]).
+-export([insert/2, find/2, getmore/2, delete/2, update/2]).
 
 -define(DEFAULT_TIMEOUT, 60000).
 -define(DEFAULT_FIND_SIZE, 101).
@@ -117,8 +117,10 @@ find(#mongo_query{dbcoll=Bucket, selector=Selector, projector=Projection, batchs
 
             %% TODO: Server side does not know the LIMIT
             if
-                BatchSize < 1 ->
+                BatchSize == 0 ->
                     Batch = ?DEFAULT_FIND_SIZE;
+                BatchSize == -1 ->
+                    Batch = 1;
                 true ->
                     Batch = BatchSize
             end,
@@ -135,12 +137,21 @@ find(#mongo_query{dbcoll=Bucket, selector=Selector, projector=Projection, batchs
             case cursor_get_results(CursorPID, Batch) of
                 {more, StartingFrom, Documents} ->
 
-                    {ok, CursorID, State2} = cursor_add(CursorPID, State),
-                    {ok,
-                     #mongo_reply{ startingfrom = StartingFrom,
-                                   cursorid     = CursorID,
-                                   documents    = Documents },
-                     State2};
+                    if BatchSize == -1 ->
+                            CursorPID ! die,
+                            {ok,
+                             #mongo_reply{ startingfrom = StartingFrom,
+                                           documents    = Documents },
+                             State};
+
+                       true ->
+                            {ok, CursorID, State2} = cursor_add(CursorPID, State),
+                            {ok,
+                             #mongo_reply{ startingfrom = StartingFrom,
+                                           cursorid     = CursorID,
+                                           documents    = Documents },
+                             State2}
+                    end;
 
                 {done, StartingFrom, Documents} ->
                     {ok,
@@ -245,23 +256,32 @@ cursor_get_results(CursorPID, HowMany) ->
     end.
 
 
+update(#mongo_update{dbcoll=Bucket, selector=Selector, updater=Updater, rawupdater=RawUpdater,
+		     multiupdate=MultiUpdate, upsert=Upsert}, State) ->
 
-id_document({struct, [{<<"_id">>, ID}]}) ->
-    case
-        case ID of
-            {objectid, _} -> true;
-            {binary, _} -> true;
-            {md5, _} -> true;
-            {uuid, _} -> true;
-            _ when is_binary(ID) -> true;
-            _ -> false
-        end
-    of
-        true -> {ok, bson_to_riak_key(ID)};
-        false -> false
-    end;
-id_document(_) ->
-    false.
+    error_logger:info_msg("About to update ~p, ~p, ~p~n", [Updater, MultiUpdate, Upsert]),
+
+    case id_document(Selector) of
+        {ok, RiakKey} when not Upsert ->
+            {ok, C} = riak:local_client(),
+            case C:get(Bucket, RiakKey) of
+                {ok, RiakObject} ->
+		    NewObject = riak_object:update_value(RiakObject, RawUpdater),
+		    case C:put(NewObject) of
+			ok -> State;
+			Err -> State#worker_state{ lastError=Err }
+                    end;
+                Err -> State#worker_state{ lastError=Err }
+            end;
+	_ ->
+	    error_logger:info_msg("This update variant is not yet supported~n", []),
+	    State
+    end.
+
+
+    %Documents = find(#mongo_query{dbcol=Bucket, selector=Selector, batchsize=BatchSize}),
+
+    %State#worker_state{ lastError=Errors }.
 
 delete(#mongo_delete{dbcoll=Bucket, selector=Selector, singleremove=SingleRemove}, State) ->
 
@@ -314,6 +334,23 @@ delete(#mongo_delete{dbcoll=Bucket, selector=Selector, singleremove=SingleRemove
 
 
 %% internals
+
+id_document({struct, [{<<"_id">>, ID}]}) ->
+    case
+        case ID of
+            {objectid, _} -> true;
+            {binary, _} -> true;
+            {md5, _} -> true;
+            {uuid, _} -> true;
+            _ when is_binary(ID) -> true;
+            _ -> false
+        end
+    of
+        true -> {ok, bson_to_riak_key(ID)};
+        false -> false
+    end;
+id_document(_) ->
+    false.
 
 limit_docs(_, BatchSize, N) when N =:= BatchSize ->
     [];

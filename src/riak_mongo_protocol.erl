@@ -26,6 +26,7 @@
 
 -include_lib ("bson/include/bson_binary.hrl").
 -include_lib ("riak_mongo_protocol.hrl").
+-include("riak_mongo_bson.hrl").
 
 -define (ReplyOpcode, 1).
 -define (UpdateOpcode, 2001).
@@ -76,15 +77,15 @@ decode_packet( << ?HDR(_, ?InsertOpcode), ?get_bits32(0,0,0,0,0,0,0,ContinueOnEr
 
 decode_packet(<< ?HDR(_, ?UpdateOpcode), 0:32, Rest/binary>> ) ->
     {DBColl, Rest1} = riak_mongo_bson:get_cstring(Rest),
-    <<?get_bits32(0,0,0,0,0,0,MultiUpdate,Upsert), Rest2>> = Rest1,
+    <<?get_bits32(0,0,0,0,0,0,MultiUpdate,Upsert), Rest2/binary>> = Rest1,
     {Selector, Rest3} = riak_mongo_bson:get_document(Rest2),
+    {#bson_raw_document{id=_BSON_ID, body=RawUpdate}, <<>>} = riak_mongo_bson:get_raw_document(Rest3),
     {Update, <<>>} = riak_mongo_bson:get_document(Rest3),
-
     {ok, #mongo_update{ dbcoll=DBColl,
                         request_id=RequestId,
                         selector=Selector,
                         updater=Update,
-
+			rawupdater=RawUpdate,
                         multiupdate = bool(MultiUpdate),
                         upsert = bool(Upsert)
                       }};
