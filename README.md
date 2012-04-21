@@ -43,14 +43,12 @@ Here are some details of the mapping
 - Keys -- translated so strings, `ObjectId("xx")` becomes the riak key `"OID:xx"`, similarly for UUID, and MD5 values. String keys map to themselves.  Other key types are currently not supported.
 - Objects -- Stored as raw BSON using content-type `application/bson`
 - Queries -- translated to map/reduce jobs that interpret the query across objects in a bucket.
+- Cursors -- When a query calls for a cursor, `riak_mongo` creates a process that holds on to the query results.  These results are then simply held in the server, and fed back to the client in chunks. 
 
 All this is work in progress, at the present state only the most basic stuff works. We're planning to also support ...
  
- - Cursors -- When a query calls for a cursor, `riak_mongo` creates a process that holds on to the query results.  These results are then simply held in the server, and fed back to the client in chunks. 
 - Indexes -- Become 2i Riak indexes, always "_bin" indexes holding the `sext:encode` value for the corresponding BSON Erlang term.  `riak_mongo` will likely only support ascending indexes.  
- - Map/reduce -- MongoDB uses runCommand to do this. We will evaluate
-   if it makes more sense to map it to the low level Riak Erlang API
-   or to exexute JavaScript coming from the Mongo client
+- Map/reduce -- MongoDB uses runCommand to do this. We will evaluate if it makes more sense to map it to the low level Riak Erlang API or to exexute JavaScript coming from the Mongo client
 
 ## Authors
 

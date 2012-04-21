@@ -58,6 +58,17 @@ handle_info(?CONTROL_MSG, State) ->
     inet:setopts(State#worker_state.sock, ?SOCK_OPTS),
     {noreply, State};
 
+
+handle_info({'DOWN',Ref,_,_,_}, State=#worker_state{ cursors=CursorDict }) ->
+
+    Dict2 = dict:filter(fun(_, {MRef,_}) ->
+                                MRef =/= Ref
+                        end,
+                        CursorDict),
+
+    {noreply, State#worker_state{ cursors=Dict2 }};
+
+
 handle_info(Msg, State) ->
     error_logger:info_msg("unknown message in worker callback: ~p~n", [Msg]),
     {noreply, State}.
