@@ -18,7 +18,8 @@
            upsert = false :: boolean(),
            multiupdate = false :: boolean(),
            selector :: bson:document(),
-           updater :: bson:document()  }).
+           updater :: bson:document(),
+	   rawupdater :: tuple()}).
 
 -record (mongo_delete, {
            request_id :: integer(),

@@ -86,6 +86,10 @@ process_message(#mongo_delete{}=Delete, State) ->
     State2 = riak_mongo_riak:delete(Delete, State),
     {noreply, State2};
 
+process_message(#mongo_update{}=Update, State) ->
+    State2 = riak_mongo_riak:update(Update, State),
+    {noreply, State2};
+
 process_message(Message, State) ->
     error_logger:info_msg("unhandled message: ~p~n", [Message]),
     {noreply, State}.

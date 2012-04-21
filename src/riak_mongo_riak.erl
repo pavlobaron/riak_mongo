@@ -28,7 +28,7 @@
 -include("riak_mongo_protocol.hrl").
 -include("riak_mongo_state.hrl").
 
--export([insert/2, find/1, delete/2]).
+-export([insert/2, find/1, delete/2, update/2]).
 
 insert(#mongo_insert{dbcoll=Bucket, documents=Docs, continueonerror=ContinueOnError}, State) ->
 
@@ -76,7 +76,6 @@ find(#mongo_query{dbcoll=Bucket, selector=Selector, projector=Projection, batchs
 
             error_logger:info_msg("Find executed ~p, ~p, ~p~n", [Projection, CompiledQuery, Project]),
 
-            %% TODO: simple key-based read shouldn't go through mapred for speed
             {ok, Documents}
                 = riak_kv_mrc_pipe:mapred(Bucket,
                                           [{map, {qfun, fun map_query/3}, {CompiledQuery, Project}, true}]),
@@ -93,23 +92,32 @@ find(#mongo_query{dbcoll=Bucket, selector=Selector, projector=Projection, batchs
             end
     end.
 
+update(#mongo_update{dbcoll=Bucket, selector=Selector, updater=Updater, rawupdater=RawUpdater,
+		     multiupdate=MultiUpdate, upsert=Upsert}, State) ->
 
-id_document({struct, [{<<"_id">>, ID}]}) ->
-    case
-        case ID of
-            {objectid, _} -> true;
-            {binary, _} -> true;
-            {md5, _} -> true;
-            {uuid, _} -> true;
-            _ when is_binary(ID) -> true;
-            _ -> false
-        end
-    of
-        true -> {ok, bson_to_riak_key(ID)};
-        false -> false
-    end;
-id_document(_) ->
-    false.
+    error_logger:info_msg("About to update ~p, ~p, ~p~n", [Updater, MultiUpdate, Upsert]),
+
+    case id_document(Selector) of
+        {ok, RiakKey} when not Upsert ->
+            {ok, C} = riak:local_client(),
+            case C:get(Bucket, RiakKey) of
+                {ok, RiakObject} ->
+		    NewObject = riak_object:update_value(RiakObject, RawUpdater),
+		    case C:put(NewObject) of
+			ok -> State;
+			Err -> State#worker_state{ lastError=Err }
+                    end;
+                Err -> State#worker_state{ lastError=Err }
+            end;
+	_ ->
+	    error_logger:info_msg("This update variant is not yet supported~n", []),
+	    State
+    end.
+
+
+    %Documents = find(#mongo_query{dbcol=Bucket, selector=Selector, batchsize=BatchSize}),
+
+    %State#worker_state{ lastError=Errors }.
 
 delete(#mongo_delete{dbcoll=Bucket, selector=Selector, singleremove=SingleRemove}, State) ->
 
@@ -164,6 +172,23 @@ delete(#mongo_delete{dbcoll=Bucket, selector=Selector, singleremove=SingleRemove
 
 
 %% internals
+
+id_document({struct, [{<<"_id">>, ID}]}) ->
+    case
+        case ID of
+            {objectid, _} -> true;
+            {binary, _} -> true;
+            {md5, _} -> true;
+            {uuid, _} -> true;
+            _ when is_binary(ID) -> true;
+            _ -> false
+        end
+    of
+        true -> {ok, bson_to_riak_key(ID)};
+        false -> false
+    end;
+id_document(_) ->
+    false.
 
 limit_docs(_, BatchSize, N) when N =:= BatchSize ->
     [];
