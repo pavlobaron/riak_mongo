@@ -64,7 +64,7 @@ find(#mongo_query{dbcoll=Bucket, selector=Selector, projector=Projection, batchs
             case C:get(Bucket, RiakKey) of
                 {ok, RiakObject} ->
                     case riak_to_bson_object(RiakObject) of
-                        {ok, Document} -> [Project(Document)];
+                        {ok, Document} -> [Project(RiakObject, Document)];
                         _ -> []
                     end;
                 _ -> []
@@ -123,12 +123,11 @@ delete(#mongo_delete{dbcoll=Bucket, selector=Selector, singleremove=SingleRemove
 
         false when not SingleRemove ->
 
-            Project = fun({struct, Elms}) ->
-                              {<<"_id">>, ID} = lists:keyfind(<<"_id">>, 1, Elms),
+            Project = fun(RiakObject, _) ->
                               {ok, C} = riak:local_client(),
-                              case C:delete(Bucket, bson_to_riak_key(ID)) of
-                                  ok -> [];
-                                  Err -> [Err]
+                              case C:delete(Bucket, riak_object:key(RiakObject)) of
+                                  ok -> ok;
+                                  Err -> Err
                               end
                       end,
 
@@ -143,7 +142,7 @@ delete(#mongo_delete{dbcoll=Bucket, selector=Selector, singleremove=SingleRemove
 
         false when SingleRemove ->
 
-            Project = fun(Doc) -> Doc end,
+            Project = fun(RiakObject, _) -> riak_object:key(RiakObject) end,
             CompiledQuery = riak_mongo_query:compile(Selector),
 
             case riak_kv_mrc_pipe:mapred(Bucket,
@@ -152,10 +151,9 @@ delete(#mongo_delete{dbcoll=Bucket, selector=Selector, singleremove=SingleRemove
                 {ok, []} ->
                     State;
 
-                {ok, [{struct, Elms}|_]} ->
-                    {<<"_id">>, ID} = lists:keyfind(<<"_id">>, 1, Elms),
+                {ok, [RiakKey|_]} ->
                     {ok, C} = riak:local_client(),
-                    case C:delete(Bucket, bson_to_riak_key(ID)) of
+                    case C:delete(Bucket, RiakKey) of
                         ok -> State;
                         Err -> State#worker_state{ lastError=Err }
                     end
@@ -200,20 +198,20 @@ riak_to_bson_object(Object) ->
             none
     end.
 
-map_query(Object, _KeyData, {CompiledQuery, Project}) ->
+map_query(RiakObject, _KeyData, {CompiledQuery, Project}) ->
     Acc = [],
-    case riak_to_bson_object(Object) of
+    case riak_to_bson_object(RiakObject) of
         {ok, Document} ->
-            do_mongo_match(Document, CompiledQuery, Project, Acc);
+            do_mongo_match(RiakObject, Document, CompiledQuery, Project, Acc);
         _ ->
             Acc
     end.
 
-do_mongo_match(Document,CompiledQuery,Project,Acc) ->
+do_mongo_match(RiakObject,Document,CompiledQuery,Project,Acc) ->
     case riak_mongo_query:matches(Document,
                                   CompiledQuery) of
         true ->
-            [Project(Document)|Acc];
+            [Project(RiakObject, Document)|Acc];
         false ->
             Acc
     end.
@@ -221,11 +219,11 @@ do_mongo_match(Document,CompiledQuery,Project,Acc) ->
 compute_projection_fun(Projection) ->
     case Projection of
         [] ->
-            fun(O) -> O end;
+            fun(_RiakObject, O) -> O end;
 
         List when is_list(List) ->
             SelectedKeys = get_projection_keys(Projection, []),
-            fun({struct, Elems}) ->
+            fun(_RiakObject, {struct, Elems}) ->
                     {struct,
                      lists:foldl(fun(Key,Acc) ->
                                          case lists:keyfind(Key, 1, Elems) of
