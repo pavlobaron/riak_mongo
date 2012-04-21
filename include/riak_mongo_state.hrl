@@ -20,4 +20,4 @@
 %% @doc State records
 %% @copyright 2012 Pavlo Baron
 
--record(worker_state, {sock, request_id=0, rest, lastError=[]}).
+-record(worker_state, {sock, request_id=0, rest, lastError=[], cursors=dict:new(), cursor_next=1}).

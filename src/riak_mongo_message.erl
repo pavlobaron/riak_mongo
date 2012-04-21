@@ -75,8 +75,28 @@ process_message(#mongo_query{ db=DataBase, coll=?CMD,
 
 process_message(#mongo_query{}=Message, State) ->
 
-    Result = riak_mongo_riak:find(Message),
-    {reply, #mongo_reply{ documents=Result, queryerror=false }, State};
+    {ok, Reply, State2} = riak_mongo_riak:find(Message, State),
+    {reply, Reply, State2};
+
+process_message(#mongo_getmore{}=Message, State) ->
+    {ok, Reply, State2} = riak_mongo_riak:getmore(Message, State),
+    {reply, Reply, State2};
+
+process_message(#mongo_killcursor{ cursorids=IDs }, State = #worker_state { cursors=Dict0 }) ->
+    %% todo: move this to riak_mongo_riak
+    NewDict = lists:foldl(fun(CursorID, Dict) ->
+                                  case dict:find(CursorID, Dict) of
+                                      {ok, {Ref,PID}} ->
+                                          erlang:demonitor(Ref),
+                                          erlang:kill(PID, kill),
+                                          dict:erase(CursorID, Dict);
+                                      error ->
+                                          Dict
+                                  end
+                          end,
+                          Dict0,
+                          IDs),
+    {noreply, State#worker_state{ cursors=NewDict }};
 
 process_message(#mongo_insert{}=Insert, State) ->
     State2 = riak_mongo_riak:insert(Insert, State),
