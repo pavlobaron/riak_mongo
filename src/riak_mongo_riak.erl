@@ -307,7 +307,8 @@ cursor_main_loop(OwnerRef, #pipe{sink=#fitting{ref=FittingRef}} = Pipe, ResultQu
 
 
     after Timeout ->
-            cursor_main_loop(OwnerRef, Pipe, ResultQueue, infinity, Sent, N, done)
+            %% cursor just dies
+            ok
 
     end.
 
