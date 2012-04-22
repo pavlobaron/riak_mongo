@@ -115,8 +115,10 @@ find(#mongo_query{dbcoll=Bucket, selector=Selector, projector=Projection, batchs
             if
                 BatchSize == 0 ->
                     Batch = ?DEFAULT_FIND_SIZE;
+                BatchSize == -1 ->
+                    Batch = 1;
                 true ->
-                    Batch = abs(BatchSize)
+                    Batch = BatchSize
             end,
 
             error_logger:info_msg("Find executed ~p, ~p, ~p~n", [Projection, CompiledQuery, Project]),
@@ -131,7 +133,7 @@ find(#mongo_query{dbcoll=Bucket, selector=Selector, projector=Projection, batchs
             case cursor_get_results(CursorPID, Batch) of
                 {more, StartingFrom, Documents} ->
 
-                    if BatchSize < 0 ->
+                    if BatchSize == -1 ->
                             CursorPID ! die,
                             {ok,
                              #mongo_reply{ startingfrom = StartingFrom,
