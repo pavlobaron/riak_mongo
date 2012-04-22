@@ -31,9 +31,7 @@ And do some basic commands:
 	> x.a = 2
 	> db.things.update({_id:x._id}, x, false)
 
-Buckets in the Riak store will be named like "collection.things" - the prefix is thus the name of the database you connect from the Mongo shell to.
-
-No auth, SSL and no IPv6 are considered yet - the implementation is growing.
+No auth, SSL and no IPv6 are considered yet.
 
 ## Mapping
 
@@ -49,6 +47,8 @@ All this is work in progress, at the present state only the most basic stuff wor
  
 - Indexes -- Become 2i Riak indexes, always "_bin" indexes holding the `sext:encode` value for the corresponding BSON Erlang term.  `riak_mongo` will likely only support ascending indexes.  
 - Map/reduce -- MongoDB uses runCommand to do this. We will evaluate if it makes more sense to map it to the low level Riak Erlang API or to exexute JavaScript coming from the Mongo client
+- Tests -- we will provide a test suite including QuickCheck for the
+  server and some automated JS tests for the client to cover both
 
 ## Authors
 

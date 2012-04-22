@@ -343,13 +343,6 @@ id_document({struct, [{<<"_id">>, ID}]}) ->
 id_document(_) ->
     false.
 
-limit_docs(_, BatchSize, N) when N =:= BatchSize ->
-    [];
-limit_docs([], _, _) ->
-    [];
-limit_docs([Document|T], BatchSize, N) ->
-    [Document|limit_docs(T, BatchSize, N + 1)].
-
 riak_to_bson_object(Object) ->
     MD = riak_object:get_metadata(Object),
     case dict:find(<<"content-type">>, MD) of
