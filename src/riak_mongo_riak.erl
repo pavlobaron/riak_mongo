@@ -111,21 +111,6 @@ find(#mongo_query{dbcoll=Bucket, selector=Selector, projector=Projection, batchs
         false ->
             CompiledQuery = riak_mongo_query:compile(Selector),
 
-            if
-                BatchSize == 0 ->
-                    KillCursor = false,
-                    FindSize = ?DEFAULT_FIND_SIZE;
-                BatchSize < 0 ->
-                    KillCursor = true,
-                    FindSize = -BatchSize;
-                BatchSize == 1 ->
-                    KillCursor = true,
-                    FindSize = BatchSize;
-                true ->
-                    KillCursor = false,
-                    FindSize = BatchSize
-            end,
-
             error_logger:info_msg("Find executed ~p, ~p, ~p~n", [Projection, CompiledQuery, Project]),
 
             Owner = self(),
@@ -135,24 +120,15 @@ find(#mongo_query{dbcoll=Bucket, selector=Selector, projector=Projection, batchs
                                                    NoTimeout)
                                end),
 
-            case cursor_get_results(CursorPID, FindSize) of
+            case cursor_get_results(CursorPID, BatchSize) of
                 {more, StartingFrom, Documents} ->
 
-                    if KillCursor ->
-                            CursorPID ! die,
-                            {ok,
-                             #mongo_reply{ startingfrom = StartingFrom,
-                                           documents    = Documents },
-                             State};
-
-                       true ->
-                            {ok, CursorID, State2} = cursor_add(CursorPID, State),
-                            {ok,
-                             #mongo_reply{ startingfrom = StartingFrom,
-                                           cursorid     = CursorID,
-                                           documents    = Documents },
-                             State2}
-                    end;
+                    {ok, CursorID, State2} = cursor_add(CursorPID, State),
+                    {ok,
+                     #mongo_reply{ startingfrom = StartingFrom,
+                                   cursorid     = CursorID,
+                                   documents    = Documents },
+                     State2};
 
                 {done, StartingFrom, Documents} ->
                     {ok,
@@ -317,18 +293,38 @@ cursor_main_loop(OwnerRef, #pipe{sink=#fitting{ref=FittingRef}} = Pipe, ResultQu
 
     end.
 
-cursor_get_results(CursorPID, HowMany) ->
+cursor_get_results(CursorPID, BatchSize) ->
+    if
+        BatchSize == 0 ->
+            KillCursor = false,
+            FindSize = ?DEFAULT_FIND_SIZE;
+        BatchSize < 0 ->
+            KillCursor = true,
+            FindSize = -BatchSize;
+        BatchSize == 1 ->
+            KillCursor = true,
+            FindSize = BatchSize;
+        true ->
+            KillCursor = false,
+            FindSize = BatchSize
+    end,
+
     Ref = erlang:monitor(process, CursorPID),
-    CursorPID ! {next, {self(), Ref}, HowMany},
+    CursorPID ! {next, {self(), Ref}, FindSize},
     receive
         {more, Ref, StartingFrom, Documents} ->
             erlang:demonitor(Ref, [flush]),
-            {more, StartingFrom, Documents};
+            if KillCursor ->
+                    CursorPID ! die,
+                    {done, StartingFrom, Documents};
+               true ->
+                    {more, StartingFrom, Documents}
+            end;
         {done, Ref, StartingFrom, Documents} ->
             erlang:demonitor(Ref, [flush]),
             {done, StartingFrom, Documents};
         {'DOWN', Ref, _, _, Reason} ->
-            {error, Reason}
+            {done, 0, []}
     end.
 
 find_reply(Documents,State) ->
