@@ -111,14 +111,19 @@ find(#mongo_query{dbcoll=Bucket, selector=Selector, projector=Projection, batchs
         false ->
             CompiledQuery = riak_mongo_query:compile(Selector),
 
-            %% TODO: Server side does not know the LIMIT
             if
                 BatchSize == 0 ->
-                    Batch = ?DEFAULT_FIND_SIZE;
+                    KillCursor = false,
+                    FindSize = ?DEFAULT_FIND_SIZE;
                 BatchSize < 0 ->
-                    Batch = - BatchSize;
+                    KillCursor = true,
+                    FindSize = -BatchSize;
+                BatchSize == 1 ->
+                    KillCursor = true,
+                    FindSize = BatchSize;
                 true ->
-                    Batch = BatchSize
+                    KillCursor = false,
+                    FindSize = BatchSize
             end,
 
             error_logger:info_msg("Find executed ~p, ~p, ~p~n", [Projection, CompiledQuery, Project]),
@@ -130,10 +135,10 @@ find(#mongo_query{dbcoll=Bucket, selector=Selector, projector=Projection, batchs
                                                    NoTimeout)
                                end),
 
-            case cursor_get_results(CursorPID, Batch) of
+            case cursor_get_results(CursorPID, FindSize) of
                 {more, StartingFrom, Documents} ->
 
-                    if BatchSize < 0 ->
+                    if KillCursor ->
                             CursorPID ! die,
                             {ok,
                              #mongo_reply{ startingfrom = StartingFrom,
