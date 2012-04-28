@@ -1,3 +1,13 @@
 #!/bin/sh
 
-mongo --verbose -port 32323 collection
+if test -z $1
+then
+	JS=""
+else
+	cd mongo
+	git update
+	JS=$1
+fi
+
+echo "running script? $JS"
+mongo --verbose -port 32323 collection $JS
