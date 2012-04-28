@@ -7,6 +7,7 @@ else
 	cd mongo
 	git update
 	JS=$1
+	cd jstests
 fi
 
 echo "running script? $JS"
