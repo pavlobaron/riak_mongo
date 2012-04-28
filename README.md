@@ -12,13 +12,15 @@ To install, add the following two lines at the end of your riak's `etc/vm.args`
 We use the low level `riak_kv` Erlang API to talk to the local store. 
 
 
-## Run
+## Run/Test
 
-You can connect to it from the Mongo shell (in this case, on the same machine) using:
+You can connect to it from the Mongo shell. There is a script test/test.sh which starts
+the preconfigured interactive mongo shell when called without parameters:
 
-    $ mongo --verbose -port 32323 collection
+    $ cd test
+    $ ./test.sh
 
-And do some basic commands:
+Then you can do some basic commands:
 
     > db.things.insert({a:1, b:2})
     > db.things.findOne()
@@ -30,6 +32,15 @@ And do some basic commands:
 	> x = db.things.findOne()
 	> x.a = 2
 	> db.things.update({_id:x._id}, x, false)
+
+The JavaScript test suite included with the mongo source distribution is also integrated
+and runnable with riak_mongo. You need to do following:
+
+    $ cd test
+    $ ./init.sh
+    $ ./test.sh update.js
+
+Before you can use the suite, you need to initialize it. The JS code will be checked out of the Mongo github repository. You need this step only once. After that, you only need to call test.sh. It's parameter is the name of the test JS included with the Mongo distribution. Look in your test/mongo/jstests folder to find the tests you can run.
 
 No auth, SSL and no IPv6 are considered yet.
 
