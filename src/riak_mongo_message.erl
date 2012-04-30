@@ -30,8 +30,9 @@
 -include("riak_mongo_state.hrl").
 -include_lib("bson/include/bson_binary.hrl").
 
--define(CMD,<<"$cmd">>).
--define(ADM,<<"admin">>).
+-define(CMD, <<"$cmd">>).
+-define(ADM, <<"admin">>).
+-define(DROP, <<"drop">>).
 
 %%
 %% loop over messages
@@ -65,9 +66,9 @@ process_messages(A1,A2) ->
 process_message(#mongo_query{ db=DataBase, coll=?CMD,
                               selector=Selector}, State) ->
 
-    {struct, [{Command,_}|Options]} = Selector,
+    {struct, [{Command, Collection}|Options]} = Selector,
 
-    case db_command(DataBase, Command, Options, State) of
+    case db_command(DataBase, Command, Collection, Options, State) of
         {ok, Reply, State2} ->
             {reply, #mongo_reply{ documents=[ {struct, Reply} ]} , State2}
     end
@@ -119,14 +120,14 @@ you(#worker_state{sock=Sock}) ->
     {ok, {{A, B, C, D}, P}} = inet:peername(Sock), %IPv6???
     io_lib:format("~p.~p.~p.~p:~p", [A, B, C, D, P]).
 
-db_command(?ADM, <<"whatsmyuri">>, _Options, State) ->
+db_command(?ADM, <<"whatsmyuri">>, _Collection, _Options, State) ->
     {ok, [{you, {utf8, you(State)}}, {ok, 1}], State};
 
-db_command(?ADM, <<"replSetGetStatus">>, _Options, State) ->
+db_command(?ADM, <<"replSetGetStatus">>, _Collection, _Options, State) ->
     _IsForShell = proplists:is_defined(forShell, _Options),
     {ok, [{ok, false}], State};
 
-db_command(_DataBase, <<"getlasterror">>, _Options, State) ->
+db_command(_DataBase, <<"getlasterror">>, _Collection, _Options, State) ->
     case State#worker_state.lastError of
         [] ->
             {ok, [{ok,true}], State#worker_state{lastError=[]}};
@@ -134,5 +135,12 @@ db_command(_DataBase, <<"getlasterror">>, _Options, State) ->
             {ok, [{err, io:format("~p", MSG)}], State#worker_state{lastError=[]}}
     end;
 
-db_command(DataBase, Command, _Options, State) ->
+db_command(DataBase, ?DROP, Collection, _Options, State) ->
+    NewState = riak_mongo_riak:delete(#mongo_delete{singleremove=false, selector={},
+					 dbcoll=riak_mongo_protocol:join_dbcoll({DataBase, Collection})},
+				      State),
+    {ok, [{ok,true}], NewState};
+
+db_command(DataBase, Command, Collection, _Options, State) ->
+    error_logger:info_msg("unhandled command: ~p, ~p:~p~n", [Command, DataBase, Collection]),
     {ok, [{err, <<"unknown command: db=", DataBase, ", cmd=", Command/binary>>}, {ok, false}], State}.

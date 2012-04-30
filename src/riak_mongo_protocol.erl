@@ -22,7 +22,7 @@
 -module(riak_mongo_protocol).
 
 -export([decode_wire/1, decode_packet/1, encode_packet/1]).
--export([split_dbcoll/1]).
+-export([split_dbcoll/1, join_dbcoll/1]).
 
 -include_lib ("bson/include/bson_binary.hrl").
 -include_lib ("riak_mongo_protocol.hrl").
@@ -143,9 +143,12 @@ decode_packet(<< ?HDR(_,OP), _/binary >> = All) ->
 
 
 split_dbcoll(Bin) ->
-	{Pos, _Len} = binary:match (Bin, <<$.>>),
-	<<DB :Pos /binary, $.:8, Coll /binary>> = Bin,
-	{DB, Coll}.
+    {Pos, _Len} = binary:match (Bin, <<$.>>),
+    <<DB :Pos /binary, $.:8, Coll /binary>> = Bin,
+    {DB, Coll}.
+
+join_dbcoll({Db, Col}) ->
+    <<Db/binary, ":", Col/binary>>.
 
 encode_packet(#mongo_reply{
                  request_id=RequestId,
