@@ -31,10 +31,18 @@
 
 -compile([{parse_transform, lager_transform}]).
 
--export([insert/2, find/2, getmore/2, delete/2, update/2]).
+-export([insert/2, find/2, getmore/2, delete/2, update/2, stats/2]).
 
 -define(DEFAULT_TIMEOUT, 60000).
 -define(DEFAULT_FIND_SIZE, 101).
+
+%% however we map this, first step is to hardcode some values
+%% used by JS tests and see how they can be dynamized
+stats(Bucket, State) ->
+    Doc = [{ns, {utf8, binary_to_list(Bucket)}},
+	   {paddingFactor, 1},
+	   {ok, 1}],
+    {ok, Doc, State}.
 
 insert(#mongo_insert{dbcoll=Bucket, documents=Docs, continueonerror=ContinueOnError}, State) ->
 
@@ -171,7 +179,6 @@ delete(#mongo_delete{dbcoll=Bucket, selector=Selector, singleremove=SingleRemove
             end;
 
         false when not SingleRemove ->
-
             Project = fun(RiakObject, _) ->
                               {ok, C} = riak:local_client(),
                               case C:delete(Bucket, riak_object:key(RiakObject)) of
@@ -181,11 +188,9 @@ delete(#mongo_delete{dbcoll=Bucket, selector=Selector, singleremove=SingleRemove
                       end,
 
             CompiledQuery = riak_mongo_query:compile(Selector),
-
             {ok, Errors}
                 = riak_kv_mrc_pipe:mapred(Bucket,
                                           [{map, {qfun, fun map_query/3}, {CompiledQuery, Project}, true}]),
-
 
             State#worker_state{ lastError=Errors };
 
@@ -323,7 +328,7 @@ cursor_get_results(CursorPID, BatchSize) ->
         {done, Ref, StartingFrom, Documents} ->
             erlang:demonitor(Ref, [flush]),
             {done, StartingFrom, Documents};
-        {'DOWN', Ref, _, _, Reason} ->
+        {'DOWN', Ref, _, _, _Reason} ->
             {done, 0, []}
     end.
 
@@ -440,7 +445,10 @@ bson_to_riak_key({uuid, BIN}) ->
 bson_to_riak_key({md5, BIN}) ->
     iolist_to_binary("MD5:" ++ hexencode(BIN));
 bson_to_riak_key(BIN) when is_binary(BIN) ->
-    BIN.
+    BIN;
+bson_to_riak_key(null) ->
+    iolist_to_binary("UUID:" ++
+			 hexencode(list_to_binary(riak_core_util:unique_id_62()))).
 
 hexencode(<<>>) -> [];
 hexencode(<<CH, Rest/binary>>) ->

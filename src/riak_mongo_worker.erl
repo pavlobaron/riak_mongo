@@ -50,7 +50,7 @@ handle_info({tcp, Sock, Data}, State) ->
     State3 = State2#worker_state{rest=Rest},
     {noreply, State3};
 
-handle_info({tcp_closed, _Sock}, _) -> {reply, ok};
+handle_info({tcp_closed, _Sock}, State) -> {noreply, State};
 
 handle_info(?CONTROL_MSG, State) ->
     error_logger:info_msg("Having control: ~p~n", [State#worker_state.sock]),

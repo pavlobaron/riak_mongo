@@ -148,7 +148,7 @@ split_dbcoll(Bin) ->
     {DB, Coll}.
 
 join_dbcoll({Db, Col}) ->
-    <<Db/binary, ":", Col/binary>>.
+    <<Db/binary, ".", Col/binary>>.
 
 encode_packet(#mongo_reply{
                  request_id=RequestId,

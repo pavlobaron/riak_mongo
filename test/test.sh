@@ -3,7 +3,7 @@
 if test -z $1
 then
 	JS=""
-	DB="riak"
+	DB="test"
 else
 	cd mongo
 	git update

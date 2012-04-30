@@ -33,6 +33,7 @@
 -define(CMD, <<"$cmd">>).
 -define(ADM, <<"admin">>).
 -define(DROP, <<"drop">>).
+-define(COLLSTATS, <<"collstats">>).
 
 %%
 %% loop over messages
@@ -136,10 +137,13 @@ db_command(_DataBase, <<"getlasterror">>, _Collection, _Options, State) ->
     end;
 
 db_command(DataBase, ?DROP, Collection, _Options, State) ->
-    NewState = riak_mongo_riak:delete(#mongo_delete{singleremove=false, selector={},
+    NewState = riak_mongo_riak:delete(#mongo_delete{singleremove=false, selector={struct, []},
 					 dbcoll=riak_mongo_protocol:join_dbcoll({DataBase, Collection})},
 				      State),
     {ok, [{ok,true}], NewState};
+
+db_command(DataBase, ?COLLSTATS, Collection, _Options, State) ->
+    riak_mongo_riak:stats(riak_mongo_protocol:join_dbcoll({DataBase, Collection}), State);
 
 db_command(DataBase, Command, Collection, _Options, State) ->
     error_logger:info_msg("unhandled command: ~p, ~p:~p~n", [Command, DataBase, Collection]),
