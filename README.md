@@ -32,6 +32,7 @@ Then you can do some basic commands:
 	> x = db.things.findOne()
 	> x.a = 2
 	> db.things.update({_id:x._id}, x, false)
+	> db.things.drop()
 
 The JavaScript test suite included with the Mongo source distribution is also integrated
 and runnable with riak_mongo. You need to do following:
