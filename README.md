@@ -1,4 +1,4 @@
-# Make Riak look like Mongo 
+# Make Riak act like Mongo 
 
 In the first step, `riak_mongo` will allow Mongo drivers to seamlessly connect to Riak using Mongo Wire Protocol and to map to the underlying Riak data store. This can help migrate the data store of existing MongoDB based applications to Riak.
 
