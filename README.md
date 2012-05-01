@@ -58,8 +58,7 @@ All this is work in progress, at the present state only the most basic stuff wor
  
 - Indexes -- Become 2i Riak indexes, always "_bin" indexes holding the `sext:encode` value for the corresponding BSON Erlang term.  `riak_mongo` will likely only support ascending indexes.  
 - Map/reduce -- MongoDB uses runCommand to do this. We will evaluate if it makes more sense to map it to the low level Riak Erlang API or to exexute JavaScript coming from the Mongo client
-- Tests -- we will provide a test suite including QuickCheck for the
-  server and some automated JS tests for the client to cover both
+- Tests -- we might provide some QuickCheck-style test later
 
 ## Authors
 
