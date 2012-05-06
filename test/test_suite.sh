@@ -1,7 +1,7 @@
 #!/bin/sh
 
 cd mongo
-git update
+git pull origin master
 cd jstests
 
 echo "running JS test stuite"

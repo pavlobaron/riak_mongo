@@ -6,7 +6,7 @@ then
 	DB="test"
 else
 	cd mongo
-	git update
+	git pull origin master
 	JS=$1
 	DB=""
 	cd jstests
