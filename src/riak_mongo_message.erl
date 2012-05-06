@@ -28,6 +28,7 @@
 
 -include ("riak_mongo_protocol.hrl").
 -include("riak_mongo_state.hrl").
+-include("riak_mongo_bson.hrl").
 -include_lib("bson/include/bson_binary.hrl").
 
 -define(CMD, <<"$cmd">>).
@@ -101,8 +102,13 @@ process_message(#mongo_killcursor{ cursorids=IDs }, State = #worker_state { curs
     {noreply, State#worker_state{ cursors=NewDict }};
 
 process_message(#mongo_insert{}=Insert, State) ->
-    State2 = riak_mongo_riak:insert(Insert, State),
-    {noreply, State2};
+    case check_docs(Insert) of
+	[] -> 
+	    State2 = riak_mongo_riak:insert(Insert, State),
+	    {noreply, State2};
+	Errors ->
+	    {noreply, State#worker_state{ lastError=Errors }}
+    end;
 
 process_message(#mongo_delete{}=Delete, State) ->
     State2 = riak_mongo_riak:delete(Delete, State),
@@ -117,6 +123,26 @@ process_message(Message, State) ->
     {noreply, State}.
 
 %% internals
+
+check_docs(#mongo_insert{documents=Docs, continueonerror=ContinueOnError}) ->
+    lists:foldl(fun(#bson_raw_document{ body = Doc}, Err)
+		      when Err =:= []; ContinueOnError =:= true ->
+			{{struct, Fields}, _} = riak_mongo_bson:get_document(Doc),
+			lists:foldl(fun({K, _V}, Erro) when Erro =:= [] ->
+					   try <<"$", _Rest/binary>> = K of
+					       _ ->
+						   error_logger:info_msg("$ field found: ~p~n", [K]),
+						   [{error, "can't insert with $ fields"}|Err]
+					   catch
+					       _:_ -> []
+					   end
+				   end,
+				   [],
+				   Fields)
+		end,
+		[],
+		Docs).
+
 you(#worker_state{sock=Sock}) ->
     {ok, {{A, B, C, D}, P}} = inet:peername(Sock), %IPv6???
     io_lib:format("~p.~p.~p.~p:~p", [A, B, C, D, P]).
