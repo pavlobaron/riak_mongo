@@ -41,7 +41,16 @@ and runnable with riak_mongo. You need to do following:
     $ ./init.sh
     $ ./test.sh update.js
 
-Before you can use the suite, you need to initialize it. The JS code will be checked out of the Mongo github repository. You need this step only once. After that, you only need to call test.sh. Its parameter is the name of the test JS included with the Mongo distribution. Look in your test/mongo/jstests folder to find the tests you can run.
+Before you can use the suite, you need to initialize it. The JS code
+will be checked out of the Mongo github repository. You need this step
+only once. After that, you only need to call test.sh. Its parameter is
+the name of the test JS included with the Mongo distribution. Look in
+your test/mongo/jstests folder to find the tests you can run
+separately. I you want to run the suite of the tests already running
+without errors, just run:
+
+	$ cd test
+	$ ./test_suite.sh
 
 No auth, SSL and no IPv6 are considered yet.
 
