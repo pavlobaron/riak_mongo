@@ -426,7 +426,7 @@ get_projection_keys([], Acc) ->
 get_projection_keys([{struct, KVs}|Rest], Acc) ->
     Keys = lists:usort
              (lists:foldl(fun({K,V}, Acc1) ->
-                                  case is_true(V) of
+                                  case riak_mongo_js_emulation:is_true(V) of
                                       true -> [K|Acc1];
                                       false -> Acc1
                                   end
@@ -458,14 +458,3 @@ hex(CH) when CH < 16 ->
     [ $0, integer_to_list(CH, 16) ];
 hex(CH) ->
     integer_to_list(CH, 16).
-
-%%
-%% we'll need this lots of places, it should probably be
-%% in a separate "js emulation" module
-%%
-is_true(undefined) -> false;
-is_true(null) -> false;
-is_true(false) -> false;
-is_true(0) -> false;
-is_true(0.0) -> false;
-is_true(_) -> true.
