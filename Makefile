@@ -1,7 +1,7 @@
 ERL					?= erl
 ERLC				= erlc
 EBIN_DIRS		:= $(wildcard deps/*/ebin)
-APPS				:= $(shell dir apps)
+APPS				:= $(shell ls apps)
 REL_DIR     = rel
 NODE				= {{name}}
 REL					= {{name}}
