@@ -41,7 +41,7 @@ init([Sock, Owner]) ->
     {ok, #worker_state{sock=Sock, rest=InitBin}}.
 
 handle_info({tcp, Sock, Data}, State) ->
-    error_logger:info_msg("Starting to proceess message: ~p, ~p, ~p~n", [Sock, Data, State#worker_state.rest]),
+    error_logger:info_msg("Starting to process message: ~p, ~p, ~p~n", [Sock, Data, State#worker_state.rest]),
 
     UnprocessedData = State#worker_state.rest,
     {Messages, Rest} = riak_mongo_protocol:decode_wire(<<UnprocessedData/binary, Data/binary>>),
