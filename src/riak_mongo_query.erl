@@ -126,7 +126,7 @@ elem_match({Key,_}=KeyValue, Key, {?CQ, QueryElems}) ->
               QueryElems);
 
 
-%% here, we probably need to handle som conversions...
+%% here, we probably need to handle some conversions...
 
 elem_match(_,_,_) ->
     false.
