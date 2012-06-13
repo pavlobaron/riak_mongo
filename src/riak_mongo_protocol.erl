@@ -141,7 +141,6 @@ decode_packet(<< ?HDR(_,OP), _/binary >> = All) ->
     error_logger:info_msg("bad ~w~n", [All]),
     exit({error, {bad_message, RequestId, OP}}).
 
-
 split_dbcoll(Bin) ->
     {Pos, _Len} = binary:match (Bin, <<$.>>),
     <<DB :Pos /binary, $.:8, Coll /binary>> = Bin,

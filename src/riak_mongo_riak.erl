@@ -31,7 +31,7 @@
 
 -compile([{parse_transform, lager_transform}]).
 
--export([insert/2, find/2, getmore/2, delete/2, update/2, stats/2]).
+-export([insert/2, find/2, getmore/2, delete/2, update/2, stats/2, count/2]).
 
 -define(DEFAULT_TIMEOUT, 60000).
 -define(DEFAULT_FIND_SIZE, 101).
@@ -214,6 +214,14 @@ delete(#mongo_delete{dbcoll=Bucket, selector=Selector, singleremove=SingleRemove
             end
     end.
 
+count(Bucket, State) ->
+    {ok, C} = riak:local_client(),
+    {ok, [Count]} = C:mapred(
+                      Bucket,
+                      [riak_kv_mapreduce:reduce_count_inputs(true)]
+                     ),
+    Doc = [{n, Count}],
+    {ok, Doc, State}.
 
 %% internals
 

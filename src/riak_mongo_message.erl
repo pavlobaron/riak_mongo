@@ -19,6 +19,7 @@
 
 %% @author Kresten Krab Thorup <krab@trifork.com>
 %% @author Pavlo Baron <pb at pbit dot org>
+%% @author Ward Bekker <ward@equanimity.nl>
 %% @doc Here we process all kind of messages
 %% @copyright 2012 Pavlo Baron
 
@@ -35,6 +36,7 @@
 -define(ADM, <<"admin">>).
 -define(DROP, <<"drop">>).
 -define(COLLSTATS, <<"collstats">>).
+-define(COUNT, <<"count">>).
 
 %%
 %% loop over messages
@@ -170,6 +172,9 @@ db_command(DataBase, ?DROP, Collection, _Options, State) ->
 
 db_command(DataBase, ?COLLSTATS, Collection, _Options, State) ->
     riak_mongo_riak:stats(riak_mongo_protocol:join_dbcoll({DataBase, Collection}), State);
+
+db_command(DataBase, ?COUNT, Collection, _Options, State) ->
+    riak_mongo_riak:count(riak_mongo_protocol:join_dbcoll({DataBase, Collection}), State);
 
 db_command(DataBase, Command, Collection, _Options, State) ->
     error_logger:info_msg("unhandled command: ~p, ~p:~p~n", [Command, DataBase, Collection]),
