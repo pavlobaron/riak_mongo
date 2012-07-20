@@ -25,6 +25,7 @@ Then you can do some basic commands:
     > db.things.insert({a:1, b:2})
     > db.things.findOne()
     > db.things.find({a:1})
+    > db.things.find({a:1}).count()
     > db.things.find({a:1}, {b:1})
     > db.things.count()
     > db.things.remove({a:1})
