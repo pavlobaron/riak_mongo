@@ -1,7 +1,14 @@
 #!/bin/sh
 
+if test -z $1
+then
+        GIT=""
+else
+        GIT="git pull origin master"
+fi
+
 cd mongo
-git pull origin master
+`$GIT`
 cd jstests
 
 echo "running JS test stuite"
