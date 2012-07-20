@@ -191,7 +191,6 @@ delete(#mongo_delete{dbcoll=Bucket, selector=Selector, singleremove=SingleRemove
             {ok, Errors}
                 = riak_kv_mrc_pipe:mapred(Bucket,
                                           [{map, {qfun, fun map_query/3}, {CompiledQuery, Project}, true}]),
-
             State#worker_state{ lastError=Errors };
 
         false when SingleRemove ->
@@ -215,15 +214,33 @@ delete(#mongo_delete{dbcoll=Bucket, selector=Selector, singleremove=SingleRemove
     end.
 
 count(Bucket, State) ->
-    {ok, C} = riak:local_client(),
-    {ok, [Count]} = C:mapred(
-                      Bucket,
-                      [riak_kv_mapreduce:reduce_count_inputs(true)]
-                     ),
-    Doc = [{n, Count}],
+    Doc = case riak_kv_mrc_pipe:mapred(Bucket,
+				       [{map, {qfun, fun map_drop_tombstones/3},
+					 none,
+					 true},
+					{reduce, {qfun, fun reduce_count/2},
+					 none, true}]) of
+	      {ok, [[Count]]} -> [{n, Count}];
+	      {ok, [_, [Count]]} -> [{n, Count}]
+	  end,
     {ok, Doc, State}.
 
 %% internals
+
+reduce_count(Results, _) ->
+    [lists:foldl(fun input_counter_fold/2, 0, Results)].
+
+input_counter_fold(PrevCount, Acc) when is_integer(PrevCount) ->
+    PrevCount + Acc;
+input_counter_fold(_, Acc) ->
+    1 + Acc.
+
+map_drop_tombstones(RiakObject, _KeyData, _) ->
+    Acc = [],
+    case riak_kv_util:is_x_deleted(RiakObject) of
+	true -> Acc;
+	false -> [1]
+    end.
 
 cursor_add(PID, #worker_state{ cursors=Dict, cursor_next=ID }=State) ->
     MRef = erlang:monitor(process, PID),
@@ -393,8 +410,7 @@ map_query(RiakObject, _KeyData, {CompiledQuery, Project}) ->
     case riak_to_bson_object(RiakObject) of
         {ok, Document} ->
             do_mongo_match(RiakObject, Document, CompiledQuery, Project, Acc);
-        _ ->
-            Acc
+        _ -> Acc
     end.
 
 do_mongo_match(RiakObject,Document,CompiledQuery,Project,Acc) ->
@@ -402,8 +418,7 @@ do_mongo_match(RiakObject,Document,CompiledQuery,Project,Acc) ->
                                   CompiledQuery) of
         true ->
             [Project(RiakObject, Document)|Acc];
-        false ->
-            Acc
+        false -> Acc
     end.
 
 compute_projection_fun(Projection) ->

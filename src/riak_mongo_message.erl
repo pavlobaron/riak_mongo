@@ -149,6 +149,9 @@ you(#worker_state{sock=Sock}) ->
     {ok, {{A, B, C, D}, P}} = inet:peername(Sock), %IPv6???
     io_lib:format("~p.~p.~p.~p:~p", [A, B, C, D, P]).
 
+clean_ok([ok|L]) -> clean_ok(L);
+clean_ok(L) -> L.
+
 db_command(?ADM, <<"whatsmyuri">>, _Collection, _Options, State) ->
     {ok, [{you, {utf8, you(State)}}, {ok, 1}], State};
 
@@ -157,11 +160,12 @@ db_command(?ADM, <<"replSetGetStatus">>, _Collection, _Options, State) ->
     {ok, [{ok, false}], State};
 
 db_command(_DataBase, <<"getlasterror">>, _Collection, _Options, State) ->
-    case State#worker_state.lastError of
+    E = clean_ok(State#worker_state.lastError),
+    case E of
         [] ->
             {ok, [{ok,true}], State#worker_state{lastError=[]}};
         MSG ->
-            {ok, [{err, io:format("~p", MSG)}], State#worker_state{lastError=[]}}
+            {ok, [{err, io:format("~p", [MSG])}], State#worker_state{lastError=[]}}
     end;
 
 db_command(DataBase, ?DROP, Collection, _Options, State) ->
