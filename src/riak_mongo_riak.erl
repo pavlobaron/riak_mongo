@@ -31,7 +31,13 @@
 
 -compile([{parse_transform, lager_transform}]).
 
--export([insert/2, find/2, getmore/2, delete/2, update/2, stats/2, count/2]).
+-export([insert/2,
+	 find/2,
+	 getmore/2,
+	 delete/2,
+	 update/2,
+	 stats/2,
+	 count/3]).
 
 -define(DEFAULT_TIMEOUT, 60000).
 -define(DEFAULT_FIND_SIZE, 101).
@@ -213,10 +219,12 @@ delete(#mongo_delete{dbcoll=Bucket, selector=Selector, singleremove=SingleRemove
             end
     end.
 
-count(Bucket, State) ->
+count(Bucket, Selector, State) ->
+    Project = fun(RiakObject, _) -> riak_object:key(RiakObject) end,
+    CompiledQuery = riak_mongo_query:compile(Selector),
     Doc = case riak_kv_mrc_pipe:mapred(Bucket,
-				       [{map, {qfun, fun map_drop_tombstones/3},
-					 none,
+				       [{map, {qfun, fun map_query/3},
+					 {CompiledQuery, Project},
 					 true},
 					{reduce, {qfun, fun reduce_count/2},
 					 none, true}]) of

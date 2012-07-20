@@ -37,6 +37,7 @@
 -define(DROP, <<"drop">>).
 -define(COLLSTATS, <<"collstats">>).
 -define(COUNT, <<"count">>).
+-define(QUERY, <<"query">>).
 
 %%
 %% loop over messages
@@ -79,7 +80,6 @@ process_message(#mongo_query{ db=DataBase, coll=?CMD,
 ;
 
 process_message(#mongo_query{}=Message, State) ->
-
     {ok, Reply, State2} = riak_mongo_riak:find(Message, State),
     {reply, Reply, State2};
 
@@ -177,8 +177,9 @@ db_command(DataBase, ?DROP, Collection, _Options, State) ->
 db_command(DataBase, ?COLLSTATS, Collection, _Options, State) ->
     riak_mongo_riak:stats(riak_mongo_protocol:join_dbcoll({DataBase, Collection}), State);
 
-db_command(DataBase, ?COUNT, Collection, _Options, State) ->
-    riak_mongo_riak:count(riak_mongo_protocol:join_dbcoll({DataBase, Collection}), State);
+db_command(DataBase, ?COUNT, Collection, Options, State) ->
+    [{?QUERY, Query}|_] = Options,
+    riak_mongo_riak:count(riak_mongo_protocol:join_dbcoll({DataBase, Collection}), Query, State);
 
 db_command(DataBase, Command, Collection, _Options, State) ->
     error_logger:info_msg("unhandled command: ~p, ~p:~p~n", [Command, DataBase, Collection]),
